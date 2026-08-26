@@ -20,31 +20,33 @@ from nabla.engine.utils import (
     Callable,
     callable,
 )
-from nabla.api.ops import incr_batch_dim_ctr, decr_batch_dim_ctr
+from nabla.api.ops import incr_batch_dim_ctr, decr_batch_dim_ctr, permute, split
 from nabla.api.utils import none
 
 
-fn jacfwd_end_rule(
+def jacfwd_end_rule(
     mut _args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
-    meta["num_res"] = List(len(res))
+    meta["num_res"] = [len(res)]
 
-    var args = _args
-    sizes, tangents = std_basis(args)
+    var args = _args.copy()
+    var _basis = std_basis(args)
+    var sizes = _basis[0].copy()
+    var tangents = _basis[1].copy()
 
     for i in range(len(tangents)):
         tangents[i] = incr_batch_dim_ctr(tangents[i])
 
     for i in range(len(args)):
-        args[i].device_array[].impl[].tangents = List(
+        args[i].device_array[].impl[].tangents = [
             tangents[i].device_array[].impl
-        )
+        ]
 
     for arg in args:
-        arg[].device_array[].impl[]._compute_jvp = True
-        arg[].device_array[].impl[].tangents[-1][]._compute_jvp = True
+        arg.device_array[].impl[]._compute_jvp = True
+        arg.device_array[].impl[].tangents[len(arg.device_array[].impl[].tangents) - 1][]._compute_jvp = True
 
     var trace = List[DeviceArray]()
     for i in range(len(res)):
@@ -63,17 +65,17 @@ fn jacfwd_end_rule(
             continue
 
         for arg in array.args():
-            var primal = arg[]
+            var primal = arg
             primals.append(primal)
             if len(primal.impl[].tangents) == 0:
                 tangent = zeros_like(primal)
                 tangents.append(tangent)
             else:
-                var tangent = DeviceArray(primal.impl[].tangents[-1])
+                var tangent = DeviceArray(primal.impl[].tangents[len(primal.impl[].tangents) - 1])
                 tangents.append(tangent)
 
         var array_tangent = jacfwd_rule(primals, tangents, array)
-        array.impl[].tangents = List(array_tangent.impl)
+        array.impl[].tangents = [array_tangent.impl]
         array.impl[]._compute_jvp = False
 
     var res_tangents = List[Array]()
@@ -86,19 +88,19 @@ fn jacfwd_end_rule(
             )
 
     for array in trace:
-        array[].impl[].tangents.clear()
+        array.impl[].tangents.clear()
 
     for i in range(len(res_tangents)):
         res_tangents[i] = decr_batch_dim_ctr(res_tangents[i])
 
-    var grads = res_tangents
+    var grads = res_tangents.copy()
     tangents = List[Array]()
     var splits = List[List[Array]]()
 
     for grad in grads:
-        splits.append(split(grad[], sizes=sizes, axis=0))
+        splits.append(split(grad, sizes=sizes, axis=0))
 
-    var values = res
+    var values = res.copy()
 
     for i in range(len(grads)):
         for j in range(len(splits[i])):
@@ -114,14 +116,14 @@ fn jacfwd_end_rule(
             batch_dim_ctr_out = (
                 batch_dim_ctr_out if batch_dim_ctr_out != none else 0
             )
-            var arg_shape = arg.shape()[batch_dim_ctr_arg:]
-            var out_shape = value.shape()[batch_dim_ctr_out:]
+            var arg_shape = List(arg.shape()[batch_dim_ctr_arg:])
+            var out_shape = List(value.shape()[batch_dim_ctr_out:])
             if len(arg_shape) == 1 and arg_shape[0] == 1:
                 arg_shape.clear()
             elif len(out_shape) == 1 and out_shape[0] == 1:
                 out_shape.clear()
 
-            var shape = arg_shape + out_shape
+            var shape = arg_shape + out_shape.copy()
             reshaped_grad = grad.reshape(shape)
             var perm_axes = List[Int]()
             for k in range(len(out_shape)):
@@ -137,4 +139,4 @@ fn jacfwd_end_rule(
     for i in range(len(tangents)):
         tangents[i].device_array[].impl[].tangents.clear()
 
-    return tangents
+    return tangents.copy()

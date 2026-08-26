@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from collections import Dict, Optional
+import nabla.compiler as compiler
+from std.collections import Dict, Optional
 from nabla.core.device_array import DeviceArray, ArrayImpl
 from nabla.ops.view_ops import broadcast_to, unsqueeze
 from nabla.ops.unary_ops import incr_batch_dim_ctr, decr_batch_dim_ctr
@@ -20,7 +20,7 @@ from nabla.api.utils import ExecutionContext
 from nabla.api.utils import none
 
 
-fn generic_setup(args: List[DeviceArray], name: String) raises -> DeviceArray:
+def generic_setup(args: List[DeviceArray], name: String) raises -> DeviceArray:
     var dtype = args[0].impl[].spec.dtype()
     var diffable = False
     var execution_context = Optional[ExecutionContext](None)
@@ -28,17 +28,18 @@ fn generic_setup(args: List[DeviceArray], name: String) raises -> DeviceArray:
     var arg_string: String = ""
 
     for arg in args:
-        arg_string += arg[].dtype().__str__() + arg[].shape().__str__() + ","
-        diffable = diffable or arg[].impl[]._diffable
-        if arg[].impl[].spec.dtype() != dtype:
+        arg_string += String(arg.dtype()) + String(arg.shape()) + ","
+        diffable = diffable or arg.impl[]._diffable
+        if arg.impl[].spec.dtype() != dtype:
             raise "DType mismatch in arguments when registering op:" + name
-        if arg[].batch_dim_ctr() > batch_dim_ctr:
-            batch_dim_ctr = arg[].batch_dim_ctr()
-        if arg[].impl[].execution_context:
-            execution_context = arg[].impl[].execution_context
+        if arg.batch_dim_ctr() > batch_dim_ctr:
+            batch_dim_ctr = arg.batch_dim_ctr()
+        if arg.impl[].execution_context:
+            execution_context = arg.impl[].execution_context
 
+    var _shape0: List[Int] = [0]
     var res = DeviceArray(
-        shape=List(0),
+        shape=_shape0.copy(),
         dtype=dtype,
         requires_pullback=diffable,
         execution_context=execution_context,
@@ -47,22 +48,22 @@ fn generic_setup(args: List[DeviceArray], name: String) raises -> DeviceArray:
     res.batch_dim_ctr_(batch_dim_ctr)
 
     for arg in args:
-        res.impl[]._args.append(arg[].impl)
+        res.impl[]._args.append(arg.impl)
 
     return res
 
 
-fn register_any_op[
-    maxpr: fn (
+def register_any_op[
+    maxpr: def (
         List[compiler.graph.Symbol], DeviceArray
-    ) raises -> compiler.graph.Symbol,
-    vjp: fn (List[DeviceArray], DeviceArray, DeviceArray) raises -> List[
+    ) raises thin -> compiler.graph.Symbol,
+    vjp: def (List[DeviceArray], DeviceArray, DeviceArray) raises thin -> List[
         DeviceArray
     ],
-    jvp: fn (
+    jvp: def (
         List[DeviceArray], List[DeviceArray], DeviceArray
-    ) raises -> DeviceArray,
-    eagerxpr: fn (mut DeviceArray, List[DeviceArray]) raises -> None,
+    ) raises thin -> DeviceArray,
+    eagerxpr: def (mut DeviceArray, List[DeviceArray]) raises thin -> None,
 ](
     args: List[DeviceArray],
     name: String,
@@ -71,7 +72,7 @@ fn register_any_op[
 ) raises -> DeviceArray:
     var res = generic_setup(args, name)
     res.shape_(targetshape)
-    res.impl[].runtime_info = runtime_info
+    res.impl[].runtime_info = runtime_info.copy()
 
     res.impl[]._maxpr = maxpr
     res.impl[]._vjp = vjp
@@ -80,12 +81,12 @@ fn register_any_op[
 
     var arg_shapes: String = ""
     for arg in args:
-        arg_shapes += arg[].shape().__str__() + ", "
+        arg_shapes += String(arg.shape()) + ", "
 
     # print(
     #     "   ",
     #     res.impl[].name,
-    #     targetshape.__str__(),
+    #     String(targetshape),
     #     " args:",
     #     arg_shapes,
     #     "batch_dim_ctr:",
@@ -95,7 +96,7 @@ fn register_any_op[
     return res
 
 
-fn get_broadcasted_axis(
+def get_broadcasted_axis(
     argshape: List[Int], targetshape: List[Int]
 ) raises -> List[Int]:
     var broadcasted_axis = List[Int]()
@@ -114,12 +115,12 @@ fn get_broadcasted_axis(
             broadcasted_axis.append(-rank + j)
             j -= 1
         else:
-            raise "Invalid broadcast, trying to broadcast from " + argshape.__str__() + " to " + targetshape.__str__()
+            raise "Invalid broadcast, trying to broadcast from " + String(argshape) + " to " + String(targetshape)
 
-    return broadcasted_axis
+    return broadcasted_axis.copy()
 
 
-fn get_broadcastedshape(
+def get_broadcastedshape(
     arg0: List[Int], arg1: List[Int], right_offset: Int = 0
 ) raises -> List[Int]:
     var newshape = List[Int]()
@@ -131,9 +132,9 @@ fn get_broadcastedshape(
         newshape.append(-1)
 
     if len(arg0) == 0:
-        return arg1
+        return arg1.copy()
     if len(arg1) == 0:
-        return arg0
+        return arg0.copy()
 
     while i >= 0 or j >= 0:
         if i >= 0 and j >= 0:
@@ -150,7 +151,7 @@ fn get_broadcastedshape(
                 i -= 1
                 j -= 1
             else:
-                raise "Invalid broadcast, when finding the brshape for: " + arg0.__str__() + " and " + arg1.__str__()
+                raise "Invalid broadcast, when finding the brshape for: " + String(arg0) + " and " + String(arg1)
         elif i >= 0:
             newshape.append(arg0[i])
             i -= 1
@@ -160,20 +161,20 @@ fn get_broadcastedshape(
 
     newshape.reverse()
 
-    return newshape
+    return newshape.copy()
 
 
-fn register_binary_op[
-    maxpr: fn (
+def register_binary_op[
+    maxpr: def (
         List[compiler.graph.Symbol], DeviceArray
-    ) raises -> compiler.graph.Symbol,
-    vjp: fn (List[DeviceArray], DeviceArray, DeviceArray) raises -> List[
+    ) raises thin -> compiler.graph.Symbol,
+    vjp: def (List[DeviceArray], DeviceArray, DeviceArray) raises thin -> List[
         DeviceArray
     ],
-    jvp: fn (
+    jvp: def (
         List[DeviceArray], List[DeviceArray], DeviceArray
-    ) raises -> DeviceArray,
-    eagerxpr: fn (mut DeviceArray, List[DeviceArray]) raises -> None,
+    ) raises thin -> DeviceArray,
+    eagerxpr: def (mut DeviceArray, List[DeviceArray]) raises thin -> None,
 ](
     read _arg0: DeviceArray,
     read _arg1: DeviceArray,
@@ -185,10 +186,10 @@ fn register_binary_op[
     var arg0_offset = arg0.batch_dim_ctr() if arg0.batch_dim_ctr() != none else 0
     var arg1_offset = arg1.batch_dim_ctr() if arg1.batch_dim_ctr() != none else 0
 
-    var arg0_batch_dims = arg0.shape()[:arg0_offset]
-    var arg1_batch_dims = arg1.shape()[:arg1_offset]
-    var arg0_true_dims = arg0.shape()[arg0_offset:]
-    var arg1_true_dims = arg1.shape()[arg1_offset:]
+    var arg0_batch_dims = List(arg0.shape()[:arg0_offset])
+    var arg1_batch_dims = List(arg1.shape()[:arg1_offset])
+    var arg0_true_dims = List(arg0.shape()[arg0_offset:])
+    var arg1_true_dims = List(arg1.shape()[arg1_offset:])
 
     var res_batch_dim = get_broadcastedshape(
         arg0_batch_dims,
@@ -198,7 +199,7 @@ fn register_binary_op[
         arg0_true_dims,
         arg1_true_dims,
     )
-    var new_shape = res_batch_dim + res_true_dim
+    var new_shape = res_batch_dim + res_true_dim.copy()
 
     arg0 = broadcast_to(arg0, res_true_dim)
     arg1 = broadcast_to(arg1, res_true_dim)
@@ -206,31 +207,31 @@ fn register_binary_op[
     arg1 = broadcast_to(arg1, new_shape, act_on_batch_dims=True)
 
     return register_any_op[maxpr, vjp, jvp, eagerxpr](
-        List(arg0, arg1),
+        [arg0, arg1],
         name,
         new_shape,
     )
 
 
-fn register_unary_op[
-    maxpr: fn (
+def register_unary_op[
+    maxpr: def (
         List[compiler.graph.Symbol], DeviceArray
-    ) raises -> compiler.graph.Symbol,
-    vjp: fn (List[DeviceArray], DeviceArray, DeviceArray) raises -> List[
+    ) raises thin -> compiler.graph.Symbol,
+    vjp: def (List[DeviceArray], DeviceArray, DeviceArray) raises thin -> List[
         DeviceArray
     ],
-    jvp: fn (
+    jvp: def (
         List[DeviceArray], List[DeviceArray], DeviceArray
-    ) raises -> DeviceArray,
-    eagerxpr: fn (mut DeviceArray, List[DeviceArray]) raises -> None,
+    ) raises thin -> DeviceArray,
+    eagerxpr: def (mut DeviceArray, List[DeviceArray]) raises thin -> None,
 ](arg: DeviceArray, name: String,) raises -> DeviceArray:
     return register_any_op[maxpr, vjp, jvp, eagerxpr](
-        List(arg), name, arg.shape()
+        [arg], name, arg.shape()
     )
 
 
-fn RuntimeInfo(cap: Int) raises -> List[List[Int]]:
+def RuntimeInfo(cap: Int) raises -> List[List[Int]]:
     var runtime_info = List[List[Int]]()
     for _ in range(cap):
         runtime_info.append(List[Int]())
-    return runtime_info
+    return runtime_info.copy()

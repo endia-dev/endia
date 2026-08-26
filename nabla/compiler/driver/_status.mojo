@@ -13,46 +13,48 @@
 
 
 from nabla.compiler._utils import CString, call_dylib_func
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._driver_library import DriverLibrary
 
 
-@value
-@register_passable("trivial")
-struct _CStatus:
-    var _ptr: UnsafePointer[NoneType]
+@fieldwise_init
+struct _CStatus(TrivialRegisterPassable, ImplicitlyCopyable):
+    var _ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    fn is_error(self, lib: DriverLibrary) -> Bool:
-        alias is_error_func = "M_isError"
-        return call_dylib_func[Int](lib.get_handle(), is_error_func, self)
+    def is_error(self, lib: DriverLibrary) -> Bool:
+        comptime is_error_func = "M_isError"
+        return call_dylib_func[Int](lib.get_handle(), is_error_func, self) != 0
 
-    fn get_error(self, lib: DriverLibrary) -> String:
-        alias get_error_func = "M_getError"
+    def get_error(self, lib: DriverLibrary) -> String:
+        comptime get_error_func = "M_getError"
         var err = call_dylib_func[CString](
             lib.get_handle(), get_error_func, self
         )
         return String(err)
 
-    fn free(self, lib: DriverLibrary):
-        alias free_func = "M_deleteStatus"
+    def free(self, lib: DriverLibrary):
+        comptime free_func = "M_deleteStatus"
         call_dylib_func(lib.get_handle(), free_func, self)
 
 
-struct Status(Stringable):
+struct Status(Writable):
     var impl: _CStatus
     var lib: DriverLibrary
 
     @implicit
-    fn __init__(out self, lib: DriverLibrary):
+    def __init__(out self, lib: DriverLibrary):
         self.impl = call_dylib_func[_CStatus](lib.get_handle(), "M_newStatus")
-        self.lib = lib
+        self.lib = lib.copy()
 
-    fn __bool__(self) -> Bool:
+    def __bool__(self) -> Bool:
         return self.impl.is_error(self.lib)
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         return self.impl.get_error(self.lib)
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.impl.free(self.lib)
+
+    def write_to[W: Writer](self, mut writer: W):
+        writer.write(self.__str__())

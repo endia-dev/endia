@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from collections import Dict
+import nabla.compiler as compiler
+from std.collections import Dict
 
 from nabla.core.device_array import DeviceArray, ArrayImpl, zeros
 from nabla.core.utils import getshape, ShapeType
@@ -28,21 +28,21 @@ from nabla.ops.reduce_ops import sum
 ####################################################################################################
 
 
-alias BATCH_DIM_CTR = 0
-alias PERM = 1
-alias TARGET_shape = 1
-alias ORIGINALshape = 2
-alias FULL_TARGET_SHAPE = 3
+comptime BATCH_DIM_CTR = 0
+comptime PERM = 1
+comptime TARGET_shape = 1
+comptime ORIGINALshape = 2
+comptime FULL_TARGET_SHAPE = 3
 
 
 # general permute transform function
 struct Permute:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         var batch_dim_ctr = array.impl[].runtime_info[BATCH_DIM_CTR][0]
-        var perm = array.impl[].runtime_info[PERM]
+        var perm = array.impl[].runtime_info[PERM].copy()
 
         var target_perm = List[Int]()
         for i in range(batch_dim_ctr):
@@ -70,27 +70,27 @@ struct Permute:
         return out_symbol
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Permute"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var perm = array.impl[].runtime_info[PERM]
-        return List(permute(tangent, perm))
+        var perm = array.impl[].runtime_info[PERM].copy()
+        return [permute(tangent, perm)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var perm = array.impl[].runtime_info[PERM]
+        var perm = array.impl[].runtime_info[PERM].copy()
         return permute(tangents[0], perm)
 
 
-fn permute(arg: DeviceArray, perm: List[Int]) raises -> DeviceArray:
+def permute(arg: DeviceArray, perm: List[Int]) raises -> DeviceArray:
     var runtime_info = RuntimeInfo(2)
     var batch_dim_ctr = arg.batch_dim_ctr()
 
@@ -101,61 +101,61 @@ fn permute(arg: DeviceArray, perm: List[Int]) raises -> DeviceArray:
         raise "The permutation must be the same length as the number of dimensions in the array"
 
     for dim in perm:
-        if dim[] >= 0:
-            axes.append(-len(argshape[batch_dim_ctr:]) + dim[])
+        if dim >= 0:
+            axes.append(-len(argshape[batch_dim_ctr:]) + dim)
         else:
-            axes.append(dim[])
+            axes.append(dim)
 
-    var target_shape = argshape
+    var target_shape = argshape.copy()
     for i in range(len(axes)):
         target_shape[i + batch_dim_ctr] = argshape[axes[i]]
 
-    var name = "permute(" + axes.__str__() + ")"
+    var name = "permute(" + String(axes) + ")"
 
-    runtime_info[PERM] = axes
-    runtime_info[BATCH_DIM_CTR] = List[Int](batch_dim_ctr)
+    runtime_info[PERM] = axes.copy()
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
 
     return register_any_op[
         Permute.maxpr, Permute.vjp, Permute.jvp, Permute.eagerxpr
-    ](List(arg), name, target_shape, runtime_info=runtime_info)
+    ]([arg], name, target_shape, runtime_info=runtime_info)
 
 
-fn transpose(arg: DeviceArray, x: Int, y: Int) raises -> DeviceArray:
-    return permute(arg, List(x, y))
+def transpose(arg: DeviceArray, x: Int, y: Int) raises -> DeviceArray:
+    return permute(arg, [x, y])
 
 
 struct Reshape:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         var dims = List[compiler.graph.Dim]()
         for s in array.shape():
-            dims.append(compiler.graph.Dim(s[]))
+            dims.append(compiler.graph.Dim(s))
         return compiler.graph.ops.reshape(args[0], dims)
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Reshape"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var originalshape = array.impl[].runtime_info[ORIGINALshape]
-        return List(reshape(tangent, originalshape))
+        var originalshape = array.impl[].runtime_info[ORIGINALshape].copy()
+        return [reshape(tangent, originalshape)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var target_shape = array.impl[].runtime_info[TARGET_shape]
+        var target_shape = array.impl[].runtime_info[TARGET_shape].copy()
         return reshape(tangents[0], target_shape)
 
 
-fn reshape(arg: DeviceArray, shape: List[Int]) raises -> DeviceArray:
+def reshape(arg: DeviceArray, shape: List[Int]) raises -> DeviceArray:
     var runtime_info = RuntimeInfo(4)
     var batch_dim_ctr = arg.batch_dim_ctr()
     var arg_shape = arg.shape()
@@ -166,113 +166,115 @@ fn reshape(arg: DeviceArray, shape: List[Int]) raises -> DeviceArray:
     for i in range(len(shape)):
         target_num_elements *= shape[i]
     if arg_num_elements != target_num_elements:
-        raise "The number of elements in the target shape must be equal to the number of elements in the original shape. " + arg_shape[
+        raise "The number of elements in the target shape must be equal to the number of elements in the original shape. " + String(arg_shape[
             batch_dim_ctr:
-        ].__str__() + " vs " + shape.__str__()
+        ]) + " vs " + String(shape)
 
-    var target_shape = arg_shape[:batch_dim_ctr] + shape
-    runtime_info[TARGET_shape] = shape
-    runtime_info[ORIGINALshape] = arg_shape[batch_dim_ctr:]
-    var name = "reshape(" + arg.shape().__str__() + " -> " + target_shape.__str__() + ")"
+    var target_shape = List(arg_shape[:batch_dim_ctr]) + shape.copy()
+    runtime_info[TARGET_shape] = shape.copy()
+    runtime_info[ORIGINALshape] = List(arg_shape[batch_dim_ctr:])
+    var name = "reshape(" + String(arg.shape()) + " -> " + String(target_shape) + ")"
 
     return register_any_op[
         Reshape.maxpr, Reshape.vjp, Reshape.jvp, Reshape.eagerxpr
-    ](List(arg), name, target_shape, runtime_info=runtime_info)
+    ]([arg], name, target_shape, runtime_info=runtime_info)
 
 
-fn flatten(arg: DeviceArray) raises -> DeviceArray:
+def flatten(arg: DeviceArray) raises -> DeviceArray:
     var batch_dim_ctr = arg.batch_dim_ctr()
     var shape = arg.shape()[batch_dim_ctr:]
     var num_elements = 1
     for i in range(0, len(shape)):
         num_elements *= shape[i]
-    return reshape(arg, List(num_elements))
+    return reshape(arg, [num_elements])
 
 
-alias BROADCASTED_AXES = 3
-alias ACT_ON_BATCH_DIMS = 4
-alias FULL_TARGET_shape = TARGET_shape
+comptime BROADCASTED_AXES = 3
+comptime ACT_ON_BATCH_DIMS = 4
+comptime FULL_TARGET_shape = TARGET_shape
 
 
 struct BroadcastTo:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
-        var runtime_info = array.impl[].runtime_info
-        var full_target_shape = runtime_info[FULL_TARGET_shape]
-        var pre_shape = array.shape()[: -len(full_target_shape)]
+        var runtime_info = array.impl[].runtime_info.copy()
+        var full_target_shape = runtime_info[FULL_TARGET_shape].copy()
+        var pre_shape = List(array.shape()[: -len(full_target_shape)])
         var dims = List[compiler.graph.Dim]()
-        for s in pre_shape + full_target_shape:
-            dims.append(compiler.graph.Dim(s[]))
+        for s in pre_shape + full_target_shape.copy():
+            dims.append(compiler.graph.Dim(s))
 
         return compiler.graph.ops.broadcast_to(args[0], dims)
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for BroadcastTo"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var axes = array.impl[].runtime_info[BROADCASTED_AXES]
+        var axes = array.impl[].runtime_info[BROADCASTED_AXES].copy()
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS
         ][0] == 1 else False
 
-        return List(
+        return [
             sum(
                 tangent,
                 axes,
                 keep_dim=True,
                 act_on_batch_dims=act_on_batch_dims,
             )
-        )
+        ]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var runtime_info = array.impl[].runtime_info
+        var runtime_info = array.impl[].runtime_info.copy()
         var act_on_batch_dims = True if runtime_info[ACT_ON_BATCH_DIMS][
             0
         ] == 1 else False
 
-        var target_shape = runtime_info[FULL_TARGET_shape]
+        var target_shape = runtime_info[FULL_TARGET_shape].copy()
         var tangent_shape = tangents[0].shape()
         var primal_shape = primals[0].shape()
         var offset = 0
         if len(tangent_shape) > len(primal_shape):
             offset = len(tangent_shape) - len(primal_shape)
-        target_shape = tangent_shape[:offset] + target_shape
+        var _pre = List(tangent_shape[:offset])
+        _pre += target_shape.copy()
+        target_shape = _pre^
 
         return broadcast_to(
             tangents[0], target_shape, act_on_batch_dims, expand_dims=False
         )
 
 
-fn broadcast_to(
+def broadcast_to(
     _arg: DeviceArray,
     _shape: List[Int],
     act_on_batch_dims: Bool = False,
     expand_dims: Bool = True,
 ) raises -> DeviceArray:
-    var shape = _shape
+    var shape = _shape.copy()
     var arg = _arg
     var argshape = arg.shape()
     var batch_dim_ctr = arg.batch_dim_ctr() if arg.batch_dim_ctr() >= 0 else 0
 
     if act_on_batch_dims:
         var len_true_dims = len(argshape) - arg.batch_dim_ctr()
-        if argshape[-len_true_dims:] != shape[-len_true_dims:]:
-            raise "Error in broadcast_to: When acting on batch dimensions, the non-batch dims must be equal. Currently:" + argshape[
-                -len_true_dims:
-            ].__str__() + " vs " + shape[
-                -len_true_dims:
-            ].__str__()
+        if argshape[len(argshape) - len_true_dims:] != shape[len(shape) - len_true_dims:]:
+            raise "Error in broadcast_to: When acting on batch dimensions, the non-batch dims must be equal. Currently:" + String(argshape[
+                len(argshape) - len_true_dims:
+            ]) + " vs " + String(shape[
+                len(shape) - len_true_dims:
+            ])
         batch_dim_ctr = 0
 
     if argshape[batch_dim_ctr:] == shape:
@@ -280,43 +282,43 @@ fn broadcast_to(
 
     if expand_dims:
         for _ in range(len(shape) - len(argshape[batch_dim_ctr:])):
-            arg = unsqueeze(arg, List(0), act_on_batch_dims)
+            arg = unsqueeze(arg, [0], act_on_batch_dims)
         argshape = arg.shape()
 
-    var target_shape = argshape[:batch_dim_ctr] + shape
+    var target_shape = List(argshape[:batch_dim_ctr]) + shape.copy()
 
     if len(shape) < len(argshape[batch_dim_ctr:]):
-        raise "Error in setting up broadcast op: The target shape must be greater than or equal to the original shape. trying to broadcast from " + argshape[
+        raise "Error in setting up broadcast op: The target shape must be greater than or equal to the original shape. trying to broadcast from " + String(argshape[
             batch_dim_ctr:
-        ].__str__() + " to " + shape.__str__()
+        ]) + " to " + String(shape)
 
     var runtime_info = RuntimeInfo(5)
-    var broadcasted_axis = get_broadcasted_axis(argshape[batch_dim_ctr:], shape)
-    runtime_info[ORIGINALshape] = argshape[batch_dim_ctr:]
-    runtime_info[BROADCASTED_AXES] = broadcasted_axis
-    runtime_info[FULL_TARGET_shape] = shape
-    runtime_info[BATCH_DIM_CTR] = List[Int](batch_dim_ctr)
-    runtime_info[ACT_ON_BATCH_DIMS] = List(1) if act_on_batch_dims else List(0)
-    var name = "broadcast_to(" + target_shape.__str__() + ")" + " {" + arg.batch_dim_ctr().__str__() + "}"
+    var broadcasted_axis = get_broadcasted_axis(List(argshape[batch_dim_ctr:]), shape)
+    runtime_info[ORIGINALshape] = List(argshape[batch_dim_ctr:])
+    runtime_info[BROADCASTED_AXES] = broadcasted_axis.copy()
+    runtime_info[FULL_TARGET_shape] = shape.copy()
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
+    runtime_info[ACT_ON_BATCH_DIMS] = [1] if act_on_batch_dims else [0]
+    var name = "broadcast_to(" + String(target_shape) + ")" + " {" + String(arg.batch_dim_ctr()) + "}"
 
     return register_any_op[
         BroadcastTo.maxpr,
         BroadcastTo.vjp,
         BroadcastTo.jvp,
         BroadcastTo.eagerxpr,
-    ](List(arg), name, target_shape, runtime_info=runtime_info)
+    ]([arg], name, target_shape, runtime_info=runtime_info)
 
 
-alias SLICES = 1
-alias RED_SLICES = 2
+comptime SLICES = 1
+comptime RED_SLICES = 2
 
 
 struct ArraySlice:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
-        var list_slices = array.impl[].runtime_info[SLICES]
+        var list_slices = array.impl[].runtime_info[SLICES].copy()
 
         var slices = List[Slice]()
 
@@ -329,9 +331,9 @@ struct ArraySlice:
                 )
             )
 
-        # print("\nIn MAX slice:", slices.__str__())
-        # print("arg_shape:", array.args()[0][].shape.__str__())
-        # print("target_shape:", array.shape().__str__())
+        # print("\nIn MAX slice:", String(slices))
+        # print("arg_shape:", String(array.args()[0][].shape))
+        # print("target_shape:", String(array.shape()))
 
         if len(slices) == 1:
             return compiler.graph.ops.slice(args[0], slices[0])
@@ -413,14 +415,14 @@ struct ArraySlice:
             raise "Slicing more than 10 dimensions is not supported"
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for ArraySlice"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var list_slices = array.impl[].runtime_info[RED_SLICES]
+        var list_slices = array.impl[].runtime_info[RED_SLICES].copy()
         var primal = primals[0]
         var primal_batch_ctr = primal.batch_dim_ctr()
         var primal_shape = primal.shape()[primal_batch_ctr:]
@@ -453,39 +455,39 @@ struct ArraySlice:
 
         var array_stack = List[DeviceArray]()
         if front_shape[slice_axis + tangent_batch_ctr] > 0:
-            var front_zeros = zeros(front_shape, tangent.dtype())
+            var front_zeros = zeros(front_shape.copy(), tangent.dtype())
             front_zeros.batch_dim_ctr_(tangent_batch_ctr)
             array_stack.append(front_zeros)
 
         array_stack.append(tangent)
 
         if back_shape[slice_axis + tangent_batch_ctr] > 0:
-            var back_zeros = zeros(back_shape, tangent.dtype())
+            var back_zeros = zeros(back_shape.copy(), tangent.dtype())
             back_zeros.batch_dim_ctr_(tangent_batch_ctr)
             array_stack.append(back_zeros)
 
         var new_contanget = concat(
             array_stack, axis=slice_axis - primal.batch_dim_ctr()
         )
-        # print("\nprimal_shape:", primal.shape().__str__())
-        # print("tangent_shape:", tangent.shape().__str__())
-        # print("front_shape:", front_shape.__str__())
-        # print("tangent_shape:", tangent.shape().__str__())
-        # print("back_shape:", back_shape.__str__())
+        # print("\nprimal_shape:", String(primal.shape()))
+        # print("tangent_shape:", String(tangent.shape()))
+        # print("front_shape:", String(front_shape))
+        # print("tangent_shape:", String(tangent.shape()))
+        # print("back_shape:", String(back_shape))
 
         if len(primal.impl[].cotangent) == 1:
             var old_cotangent = DeviceArray(primal.impl[].cotangent[0])
-            return List(old_cotangent + new_contanget)
+            return [old_cotangent + new_contanget]
         else:
-            return List(new_contanget)
+            return [new_contanget]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var list_slices = array.impl[].runtime_info[RED_SLICES]
+        var list_slices = array.impl[].runtime_info[RED_SLICES].copy()
         var slices = List[Slice]()
         for i in range(0, len(list_slices) // 3):
             slices.append(
@@ -499,12 +501,12 @@ struct ArraySlice:
         return array_slice(tangents[0], slices)
 
 
-fn array_slice(arg: DeviceArray, slices: List[Slice]) raises -> DeviceArray:
+def array_slice(arg: DeviceArray, slices: List[Slice]) raises -> DeviceArray:
     var batch_dim_ctr = arg.batch_dim_ctr()
     if batch_dim_ctr == none:
         batch_dim_ctr = 0
 
-    var name = "array_slice" + slices.__str__() + ")"
+    var name = "array_slice" + String(slices) + ")"
     var runtime_info = RuntimeInfo(3)
     var shape = arg.shape()
 
@@ -538,7 +540,7 @@ fn array_slice(arg: DeviceArray, slices: List[Slice]) raises -> DeviceArray:
             list_slices.append(1)
 
         # update shape
-        new_shape.append((list_slices[-2] - list_slices[-3]) // list_slices[-1])
+        new_shape.append((list_slices[len(list_slices) - 2] - list_slices[len(list_slices) - 3]) // list_slices[len(list_slices) - 1])
 
     for i in range(batch_dim_ctr + len(slices), len(shape), 1):
         list_slices.append(0)
@@ -546,22 +548,22 @@ fn array_slice(arg: DeviceArray, slices: List[Slice]) raises -> DeviceArray:
         list_slices.append(1)
         new_shape.append(shape[i])
 
-    runtime_info[BATCH_DIM_CTR] = List(arg.batch_dim_ctr())
-    runtime_info[SLICES] = list_slices
-    runtime_info[RED_SLICES] = list_slices[3 * batch_dim_ctr :]
+    runtime_info[BATCH_DIM_CTR] = [arg.batch_dim_ctr()]
+    runtime_info[SLICES] = list_slices.copy()
+    runtime_info[RED_SLICES] = List(list_slices[3 * batch_dim_ctr :])
 
     return register_any_op[
         ArraySlice.maxpr, ArraySlice.vjp, ArraySlice.jvp, ArraySlice.eagerxpr
-    ](List(arg), name, new_shape, runtime_info=runtime_info)
+    ]([arg], name, new_shape, runtime_info=runtime_info)
 
 
-alias AXIS = 1
-alias SIZES = 2
+comptime AXIS = 1
+comptime SIZES = 2
 
 
 struct Stack:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         var batch_dim_ctr = array.impl[].runtime_info[BATCH_DIM_CTR][0]
@@ -569,11 +571,11 @@ struct Stack:
         return compiler.graph.ops.stack(args, axis)
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Stack"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
         var axis = array.impl[].runtime_info[AXIS][0]
@@ -584,7 +586,7 @@ struct Stack:
         return primal_tangents
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -593,13 +595,13 @@ struct Stack:
         return stack(tangents, axis)
 
 
-fn stack(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
+def stack(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
     var batch_dim_ctr = args[0].batch_dim_ctr()
     var sizes = List[Int]()
     var shape = List[Int]()
     var refshape = args[0].shape()
     for arg in args:
-        if arg[].shape() != refshape:
+        if arg.shape() != refshape:
             raise "All input arrays must have the same shape"
         sizes.append(1)
 
@@ -610,9 +612,9 @@ fn stack(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
         shape.append(args[0].shape()[i])
 
     var runtime_info = RuntimeInfo(3)
-    runtime_info[AXIS] = List(axis)
+    runtime_info[AXIS] = [axis]
     runtime_info[SIZES] = sizes
-    runtime_info[BATCH_DIM_CTR] = List(batch_dim_ctr)
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
     var name = "stack(" + String(axis) + ")"
 
     return register_any_op[Stack.maxpr, Stack.vjp, Stack.jvp, Stack.eagerxpr](
@@ -622,7 +624,7 @@ fn stack(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
 
 struct Concat:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         var batch_dim_ctr = array.impl[].runtime_info[BATCH_DIM_CTR][0]
@@ -630,22 +632,22 @@ struct Concat:
         return compiler.graph.ops.concat(args, axis)
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Concat"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
         var axis = array.impl[].runtime_info[AXIS][0]
-        var sizes = array.impl[].runtime_info[SIZES]
+        var sizes = array.impl[].runtime_info[SIZES].copy()
         var primal_tangents = split(tangent, sizes, axis)
         for i in range(len(primal_tangents)):
             primal_tangents[i] = primal_tangents[i].reshape(primals[0].shape())
-        return primal_tangents
+        return primal_tangents.copy()
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -654,23 +656,23 @@ struct Concat:
         return concat(tangents, axis)
 
 
-fn concat(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
+def concat(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
     var batch_dim_ctr = args[0].batch_dim_ctr()
     var sizes = List[Int]()
     var new_dim_size = 0
 
     for arg in args:
-        var batch_dim_ctr = arg[].batch_dim_ctr()
-        new_dim_size += arg[].shape()[batch_dim_ctr:][axis]
-        sizes.append(arg[].shape()[batch_dim_ctr:][axis])
+        var batch_dim_ctr = arg.batch_dim_ctr()
+        new_dim_size += arg.shape()[batch_dim_ctr:][axis]
+        sizes.append(arg.shape()[batch_dim_ctr:][axis])
 
     var shape = args[0].shape()
     shape[axis + batch_dim_ctr] = new_dim_size
 
     var runtime_info = RuntimeInfo(3)
-    runtime_info[AXIS] = List(axis)
-    runtime_info[SIZES] = sizes
-    runtime_info[BATCH_DIM_CTR] = List(batch_dim_ctr)
+    runtime_info[AXIS] = [axis]
+    runtime_info[SIZES] = sizes.copy()
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
     var name = "concat(" + String(axis) + ")"
 
     return register_any_op[
@@ -678,7 +680,7 @@ fn concat(args: List[DeviceArray], axis: Int = 0) raises -> DeviceArray:
     ](args, name, shape, runtime_info=runtime_info)
 
 
-fn split(
+def split(
     arg: DeviceArray, sizes: List[Int], axis: Int
 ) raises -> List[DeviceArray]:
     var slices = List[Slice]()
@@ -695,15 +697,15 @@ fn split(
         results.append(array_slice(arg, slices))
         idx += sizes[i]
 
-    return results
+    return results.copy()
 
 
 struct Squeeze:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
-        var axes = array.impl[].runtime_info[AXIS]
+        var axes = array.impl[].runtime_info[AXIS].copy()
         if len(axes) > 1:
             raise "Squeeze only supports a single axis at the moment"
 
@@ -711,28 +713,28 @@ struct Squeeze:
         return symbol
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Squeeze"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var axis = array.impl[].runtime_info[AXIS]
+        var axis = array.impl[].runtime_info[AXIS].copy()
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS_SQ
         ][0] == 1 else False
-        return List(
+        return [
             unsqueeze(tangent, axis, act_on_batch_dims, incr_batch_dims=False)
-        )
+        ]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var axis = array.impl[].runtime_info[AXIS]
+        var axis = array.impl[].runtime_info[AXIS].copy()
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS_SQ
         ][0] == 1 else False
@@ -741,10 +743,10 @@ struct Squeeze:
         )
 
 
-alias ACT_ON_BATCH_DIMS_SQ = 2
+comptime ACT_ON_BATCH_DIMS_SQ = 2
 
 
-fn squeeze(
+def squeeze(
     arg: DeviceArray,
     axis: List[Int],
     act_on_batch_dims: Bool = False,
@@ -757,34 +759,34 @@ fn squeeze(
         batch_dim_ctr = 0
 
     var argshape = arg.shape()[batch_dim_ctr:]
-    var target_shape = arg.shape()[:batch_dim_ctr]
+    var target_shape = List(arg.shape()[:batch_dim_ctr])
 
     if len(axis) == len(arg.shape()):
         raise "Cannot squeeze all dimensions of an array with size > 1"
 
-    var axes = axis
+    var axes = axis.copy()
     for i in range(len(axis)):
         if axis[i] >= 0:
             axes[i] = -len(argshape) + axis[i]
 
     for i in range(-len(argshape), 0):
         if i not in axes:
-            target_shape.append(argshape[i])
-        elif argshape[i] != 1:
+            target_shape.append(argshape[len(argshape) + i])
+        elif argshape[len(argshape) + i] != 1:
             raise "Cannot squeeze dimension " + String(
                 i
-            ) + " with size " + String(arg.shape()[i])
+            ) + " with size " + String(arg.shape()[len(arg.shape()) + i])
 
     var runtime_info = RuntimeInfo(3)
-    runtime_info[AXIS] = axes
-    runtime_info[BATCH_DIM_CTR] = List(batch_dim_ctr)
-    runtime_info[ACT_ON_BATCH_DIMS_SQ] = List(1) if act_on_batch_dims else List(
+    runtime_info[AXIS] = axes.copy()
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
+    runtime_info[ACT_ON_BATCH_DIMS_SQ] = [1] if act_on_batch_dims else [
         0
-    )
-    var name = "squeeze(" + axes.__str__() + ")"
+    ]
+    var name = "squeeze(" + String(axes) + ")"
     var res = register_any_op[
         Squeeze.maxpr, Squeeze.vjp, Squeeze.jvp, Squeeze.eagerxpr
-    ](List(arg), name, target_shape, runtime_info=runtime_info)
+    ]([arg], name, target_shape, runtime_info=runtime_info)
     if act_on_batch_dims and dec_batch_dims:
         var diff = len(argshape) - len(target_shape)
         for _ in range(diff):
@@ -795,10 +797,10 @@ fn squeeze(
 
 struct Unsqueeze:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
-        var axes = array.impl[].runtime_info[AXIS]
+        var axes = array.impl[].runtime_info[AXIS].copy()
         var symbol = args[0]
 
         for i in range(len(axes)):
@@ -807,28 +809,28 @@ struct Unsqueeze:
         return symbol
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Unsqueeze"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        var axes = array.impl[].runtime_info[AXIS]
+        var axes = array.impl[].runtime_info[AXIS].copy()
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS_SQ
         ][0] == 1 else False
-        return List(
+        return [
             squeeze(tangent, axes, act_on_batch_dims, dec_batch_dims=False)
-        )
+        ]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var axes = array.impl[].runtime_info[AXIS]
+        var axes = array.impl[].runtime_info[AXIS].copy()
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS_SQ
         ][0] == 1 else False
@@ -838,7 +840,7 @@ struct Unsqueeze:
         return res
 
 
-fn unsqueeze(
+def unsqueeze(
     arg: DeviceArray,
     axes: List[Int],
     act_on_batch_dims: Bool = False,
@@ -852,13 +854,13 @@ fn unsqueeze(
 
     var argshape = arg.shape()
     var target_rank = len(argshape[batch_dim_ctr:]) + len(axes)
-    var shape = argshape[:batch_dim_ctr]
+    var shape = List(argshape[:batch_dim_ctr])
     for _ in range(target_rank):
         shape.append(1)
 
     var sorted_axes = List[Int]()
     for axis in axes:
-        var actual_axis = axis[] if axis[] < 0 else -target_rank + axis[]
+        var actual_axis = axis if axis < 0 else -target_rank + axis
         sorted_axes.append(actual_axis)
 
     sort(sorted_axes)
@@ -866,19 +868,19 @@ fn unsqueeze(
     var arg_idx = -len(argshape[batch_dim_ctr:])
     for target_idx in range(-target_rank, 0):
         if target_idx not in sorted_axes:
-            shape[target_idx] = argshape[arg_idx]
+            shape[len(shape) + target_idx] = argshape[len(argshape) + arg_idx]
             arg_idx += 1
 
     var runtime_info = RuntimeInfo(3)
-    runtime_info[AXIS] = sorted_axes
-    runtime_info[BATCH_DIM_CTR] = List(batch_dim_ctr)
-    runtime_info[ACT_ON_BATCH_DIMS_SQ] = List(1) if act_on_batch_dims else List(
+    runtime_info[AXIS] = sorted_axes.copy()
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
+    runtime_info[ACT_ON_BATCH_DIMS_SQ] = [1] if act_on_batch_dims else [
         0
-    )
-    var name = "unsqueeze(" + sorted_axes.__str__() + ")"
+    ]
+    var name = "unsqueeze(" + String(sorted_axes) + ")"
     var res = register_any_op[
         Unsqueeze.maxpr, Unsqueeze.vjp, Unsqueeze.jvp, Unsqueeze.eagerxpr
-    ](List(arg), name, shape, runtime_info=runtime_info)
+    ]([arg], name, shape, runtime_info=runtime_info)
     if act_on_batch_dims and incr_batch_dims:
         for _ in range(len(axes)):
             res = incr_batch_dim_ctr(res)

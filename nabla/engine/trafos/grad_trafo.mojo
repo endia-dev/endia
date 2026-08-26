@@ -21,65 +21,67 @@ from nabla.engine.utils import (
     Callable,
     callable,
 )
-from nabla.api.ops import incr_batch_dim_ctr, decr_batch_dim_ctr
+from nabla.api.ops import incr_batch_dim_ctr, decr_batch_dim_ctr, permute, split
 from nabla.api.utils import none
 from nabla.engine.trafos.vjp_trafo import cotangent
 
 
-fn grad_call(
+def grad_call(
     meta: TrafoMeta,
     args: List[Array],
 ) raises -> List[Array]:
-    var primals = args
-    for primal in primals:
-        primal[].requires_pullback_(True)
-    return primals
+    var primals = args.copy()
+    for ref primal in primals:
+        primal.requires_pullback_(True)
+    return primals.copy()
 
 
-fn grad_end_rule(
+def grad_end_rule(
     mut _args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
-    meta["num_res"] = List(len(res))
+    meta["num_res"] = [len(res)]
 
     var num_elements_args = 0
     var num_elements_res = 0
     for arg in _args:
         var num_elements = 1
-        for dim in arg[].shape()[arg[].batch_dim_ctr() :]:
-            num_elements *= dim[]
+        for dim in arg.shape()[arg.batch_dim_ctr() :]:
+            num_elements *= dim
         num_elements_args += num_elements
     for res in res:
         var num_elements = 1
-        for dim in res[].shape()[res[].batch_dim_ctr() :]:
-            num_elements *= dim[]
+        for dim in res.shape()[res.batch_dim_ctr() :]:
+            num_elements *= dim
         num_elements_res += num_elements
 
     if num_elements_args > num_elements_res:
-        var primals = _args
-        var args = _args
+        var primals = _args.copy()
+        var args = _args.copy()
 
-        sizes, tangents = std_basis(res)
+        var _basis = std_basis(res)
+        var sizes = _basis[0].copy()
+        var tangents = _basis[1].copy()
 
         for i in range(len(tangents)):
             tangents[i] = incr_batch_dim_ctr(tangents[i])
 
-        for primal in primals:
-            primal[].requires_pullback_(True)
+        for ref primal in primals:
+            primal.requires_pullback_(True)
 
         if len(tangents) != len(res):
-            raise "Error in jacrev_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + len(
+            raise "Error in jacrev_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + String(len(
                 tangents
-            ).__str__() + " vs. len(res) = " + len(
+            )) + " vs. len(res) = " + String(len(
                 res
-            ).__str__()
+            ))
 
         var outputs = List[DeviceArray]()
         for i in range(len(res)):
             var device_array = res[i].device_array
             var tangent = tangents[i].device_array
-            device_array[].impl[].cotangent = List(tangent[].impl)
+            device_array[].impl[].cotangent = [tangent[].impl]
             outputs.append(device_array[])
 
         if len(meta["with_remat"]) == 0:
@@ -90,8 +92,9 @@ fn grad_end_rule(
         var grads = List[Array]()
         for i in range(len(primals)):
             if len(primals[i].device_array[].impl[].cotangent) == 0:
-                var shape = List(sizes[i]) + primals[i].shape()
-                var empty_grad = zeros(shape, primals[i].dtype())
+                var shape: List[Int] = [sizes[i]]
+                shape += primals[i].shape()
+                var empty_grad = zeros(shape.copy(), primals[i].dtype())
                 empty_grad.batch_dim_ctr_(primals[i].batch_dim_ctr())
                 grads.append(empty_grad)
             else:
@@ -104,7 +107,7 @@ fn grad_end_rule(
         for j in range(len(grads)):
             splits.append(split(grads[j], sizes=sizes, axis=0))
 
-        var values = outputs
+        var values = outputs.copy()
         for j in range(len(values)):
             for i in range(len(args)):
                 var grad = splits[i][j]
@@ -116,38 +119,40 @@ fn grad_end_rule(
                 batch_dim_ctr_out = (
                     batch_dim_ctr_out if batch_dim_ctr_out != none else 0
                 )
-                var arg_shape = args[i].shape()[batch_dim_ctr_arg:]
-                var out_shape = values[j].shape()[batch_dim_ctr_out:]
+                var arg_shape = List(args[i].shape()[batch_dim_ctr_arg:])
+                var out_shape = List(values[j].shape()[batch_dim_ctr_out:])
                 if len(arg_shape) == 1 and arg_shape[0] == 1:
                     arg_shape.clear()
                 elif len(out_shape) == 1 and out_shape[0] == 1:
                     out_shape.clear()
 
-                var shape = out_shape + arg_shape
+                var shape = out_shape + arg_shape.copy()
                 reshaped_grad = grad.reshape(shape)
                 cotangents.append(reshaped_grad)
 
-        for array in primals:
-            array[].device_array[].impl[].cotangent.clear()
-            array[].requires_pullback_(False)
+        for ref array in primals:
+            array.device_array[].impl[].cotangent.clear()
+            array.requires_pullback_(False)
 
-        return cotangents
+        return cotangents.copy()
 
     else:
-        var args = _args
-        sizes, tangents = std_basis(args)
+        var args = _args.copy()
+        var _basis = std_basis(args)
+        var sizes = _basis[0].copy()
+        var tangents = _basis[1].copy()
 
         for i in range(len(tangents)):
             tangents[i] = incr_batch_dim_ctr(tangents[i])
 
         for i in range(len(args)):
-            args[i].device_array[].impl[].tangents = List(
+            args[i].device_array[].impl[].tangents = [
                 tangents[i].device_array[].impl
-            )
+            ]
 
         for arg in args:
-            arg[].device_array[].impl[]._compute_jvp = True
-            arg[].device_array[].impl[].tangents[-1][]._compute_jvp = True
+            arg.device_array[].impl[]._compute_jvp = True
+            arg.device_array[].impl[].tangents[len(arg.device_array[].impl[].tangents) - 1][]._compute_jvp = True
 
         var trace = List[DeviceArray]()
         for i in range(len(res)):
@@ -166,17 +171,17 @@ fn grad_end_rule(
                 continue
 
             for arg in array.args():
-                var primal = arg[]
+                var primal = arg
                 primals.append(primal)
                 if len(primal.impl[].tangents) == 0:
                     tangent = zeros_like(primal)
                     tangents.append(tangent)
                 else:
-                    var tangent = DeviceArray(primal.impl[].tangents[-1])
+                    var tangent = DeviceArray(primal.impl[].tangents[len(primal.impl[].tangents) - 1])
                     tangents.append(tangent)
 
             var array_tangent = jacfwd_rule(primals, tangents, array)
-            array.impl[].tangents = List(array_tangent.impl)
+            array.impl[].tangents = [array_tangent.impl]
             array.impl[]._compute_jvp = False
 
         var res_tangents = List[Array]()
@@ -189,19 +194,19 @@ fn grad_end_rule(
                 )
 
         for array in trace:
-            array[].impl[].tangents.clear()
+            array.impl[].tangents.clear()
 
         for i in range(len(res_tangents)):
             res_tangents[i] = decr_batch_dim_ctr(res_tangents[i])
 
-        var grads = res_tangents
+        var grads = res_tangents.copy()
         tangents = List[Array]()
         var splits = List[List[Array]]()
 
         for grad in grads:
-            splits.append(split(grad[], sizes=sizes, axis=0))
+            splits.append(split(grad, sizes=sizes, axis=0))
 
-        var values = res
+        var values = res.copy()
 
         for i in range(len(grads)):
             for j in range(len(splits[i])):
@@ -217,14 +222,14 @@ fn grad_end_rule(
                 batch_dim_ctr_out = (
                     batch_dim_ctr_out if batch_dim_ctr_out != none else 0
                 )
-                var arg_shape = arg.shape()[batch_dim_ctr_arg:]
-                var out_shape = value.shape()[batch_dim_ctr_out:]
+                var arg_shape = List(arg.shape()[batch_dim_ctr_arg:])
+                var out_shape = List(value.shape()[batch_dim_ctr_out:])
                 if len(arg_shape) == 1 and arg_shape[0] == 1:
                     arg_shape.clear()
                 elif len(out_shape) == 1 and out_shape[0] == 1:
                     out_shape.clear()
 
-                var shape = arg_shape + out_shape
+                var shape = arg_shape + out_shape.copy()
                 reshaped_grad = grad.reshape(shape)
                 var perm_axes = List[Int]()
                 for k in range(len(out_shape)):
@@ -240,4 +245,4 @@ fn grad_end_rule(
         for i in range(len(tangents)):
             tangents[i].device_array[].impl[].tangents.clear()
 
-        return tangents
+        return tangents.copy()

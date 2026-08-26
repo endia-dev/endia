@@ -11,20 +11,20 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Defines functions to save/load tensors from a checkpoint file."""
-from os import PathLike
-from pathlib import Path
-from sys import sizeof
+from std.os import PathLike
+from std.pathlib import Path
+from std.sys import sizeof
 
 from nabla.compiler.engine import TensorMap
 from nabla.compiler.tensor import Tensor, TensorShape, TensorSpec
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from .metadata import _read_version, _serialization_header, current_version
 from .tensor_dict import TensorDict, _CheckpointTensor
 
 
 @always_inline
-fn _write_int[type: Intable](ref object: type, f: FileHandle) raises:
+def _write_int[type: Intable](ref object: type, f: FileHandle) raises:
     """Writes an int value to a file."""
     var ptr = UnsafePointer(to=object).bitcast[UInt8]()
     f._write(ptr, sizeof[type]())
@@ -78,7 +78,7 @@ def save[PathLike: PathLike](tensor_dict: TensorDict, path: PathLike):
     var tensor_keys = List[String](capacity=len(tensor_dict))
 
     for key_ref in tensor_dict:
-        var key = key_ref[]
+        var key = key_ref
         var spec = tensor_dict._get(key).spec
         tensor_keys.append(key)
 
@@ -124,7 +124,7 @@ def save[PathLike: PathLike](tensor_dict: TensorDict, path: PathLike):
             var rank: UInt8 = spec.rank()
             _write_int(rank, f)
             for d in range(Int(rank)):
-                var dim: UInt32 = spec.shape[d]
+                var dim: UInt32 = spec.shape()[d]
                 _write_int(dim, f)
 
             var tensor_offset = tensor_offsets[i]
@@ -139,7 +139,7 @@ def save[PathLike: PathLike](tensor_dict: TensorDict, path: PathLike):
 
 
 @always_inline
-fn _read_int[type: DType](f: FileHandle) raises -> Scalar[type]:
+def _read_int[type: DType](f: FileHandle) raises -> Scalar[type]:
     """Reads an int value from a file."""
     var size = sizeof[type]()
     var bytes_tensor = Tensor[DType.uint8](f.read_bytes(size))
@@ -147,14 +147,14 @@ fn _read_int[type: DType](f: FileHandle) raises -> Scalar[type]:
 
 
 @always_inline
-fn _read_string(f: FileHandle, size: UInt32) raises -> String:
+def _read_string(f: FileHandle, size: UInt32) raises -> String:
     """Reads string of the specified size from a file."""
     var string_bytes = f.read_bytes(Int(size))
     return String(bytes=string_bytes)
 
 
-@value
-struct _KeysAndSpecs:
+@fieldwise_init
+struct _KeysAndSpecs(Copyable, Movable):
     var key: String
     var spec: TensorSpec
 
@@ -209,7 +209,7 @@ def load[PathLike: PathLike](path: PathLike) -> TensorDict:
             var key = _read_string(f, key_size)
             var dtype = _read_int[DType.uint8](f)
             var rank = _read_int[DType.uint8](f)
-            var dims = List[Int, hint_trivial_type=True]()
+            var dims = List[Int]()
             for _ in range(rank):
                 var d = _read_int[DType.uint32](f)
                 dims.append(Int(d))

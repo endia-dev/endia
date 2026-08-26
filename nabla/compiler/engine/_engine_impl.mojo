@@ -11,9 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from pathlib import Path
-from sys import external_call
-from sys.ffi import _OwnedDLHandle, DLHandle, _find_dylib
+from std.pathlib import Path
+from std.ffi import external_call
+from std.ffi import OwnedDLHandle, _find_dylib
+from nabla.compiler._dlhandle import DLHandle
 
 from nabla.compiler._utils import (
     CString,
@@ -21,40 +22,40 @@ from nabla.compiler._utils import (
     exchange,
     get_lib_path_from_cfg,
 )
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 
-fn _get_engine_path() raises -> String:
+def _get_engine_path() raises -> String:
     return get_lib_path_from_cfg(".engine_lib", "AI engine lib")
 
 
 struct _EngineImpl:
     """Represents an instance of Modular AI Engine."""
 
-    var owned_lib: _OwnedDLHandle
+    var owned_lib: OwnedDLHandle
     # FIXME, lib should not be accessed directly.
     var lib: DLHandle
     """Handle to Modular AI Engine library."""
 
-    alias VersionFnName = "M_version"
+    comptime VersionFnName = "M_version"
 
     @implicit
-    fn __init__(out self, path: String):
+    def __init__(out self, path: String):
         self.owned_lib = _find_dylib["Modular AI Engine"](path)
-        self.lib = self.owned_lib.handle()
+        self.lib = self.owned_lib.borrow()
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.owned_lib = existing.owned_lib^
         self.lib = existing.lib
 
-    fn get_version(self) -> String:
+    def get_version(self) -> String:
         """Returns version of modular AI engine.
 
         Returns:
             Version as string.
         """
         var version = call_dylib_func[CString](self.lib, Self.VersionFnName)
-        return version.__str__()
+        return String(version)
 
-    fn __enter__(owned self) -> Self:
+    def __enter__(var self) -> Self:
         return self^

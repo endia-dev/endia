@@ -1,6 +1,6 @@
 [project]
 authors = ["TilliFe"]
-channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
+channels = ["conda-forge", "https://conda.modular.com/max-nightly", "https://repo.prefix.dev/modular-community"]
 name = "Nabla"
 platforms = ["osx-arm64"]
 version = "25.3.0"
@@ -8,4 +8,4 @@ version = "25.3.0"
 [tasks]
 
 [dependencies]
-max = ">=25.3.0,<26"
+mojo = "==1.0.0"

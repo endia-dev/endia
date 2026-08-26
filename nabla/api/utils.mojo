@@ -11,26 +11,28 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from memory import ArcPointer
-from collections import Dict
-import nabla.compiler
+from std.memory import ArcPointer
+from std.collections import Dict
+import nabla.compiler as compiler
 from nabla.engine.utils import TrafoMeta, GraphRepr, Callable
+from nabla.api.array import Array
+from nabla.api.functional import jit
 
 
-alias none: Int = -55555
+comptime none: Int = -55555
 
 
-@value
-struct ExecutionContext(Copyable, Movable):
+@fieldwise_init
+struct ExecutionContext(Copyable, ImplicitlyCopyable, Movable):
     var dict: ArcPointer[Dict[Int, ArcPointer[compiler.engine.Model]]]
 
-    fn __init__(out self):
+    def __init__(out self):
         self.dict = ArcPointer(Dict[Int, ArcPointer[compiler.engine.Model]]())
 
-    fn __getitem__(self, key: Int) raises -> ArcPointer[compiler.engine.Model]:
+    def __getitem__(self, key: Int) raises -> ArcPointer[compiler.engine.Model]:
         return self.dict[][key]
 
-    fn __setitem__(
+    def __setitem__(
         mut self, key: Int, value: ArcPointer[compiler.engine.Model]
     ) -> None:
         if key in self.dict[]:
@@ -38,16 +40,16 @@ struct ExecutionContext(Copyable, Movable):
             return
         self.dict[][key] = value
 
-    fn __contains__(self, key: Int) -> Bool:
+    def __contains__(self, key: Int) -> Bool:
         return key in self.dict[]
 
-    fn clear(mut self) -> None:
+    def clear(mut self) -> None:
         self.dict[].clear()
 
 
-fn xpr(callable: Callable) raises -> GraphRepr:
+def xpr(callable: Callable) raises -> GraphRepr:
     return GraphRepr(callable)
 
 
-fn xpr(func: fn (List[Array]) raises -> List[Array]) raises -> GraphRepr:
+def xpr(func: def (List[Array]) raises thin -> List[Array]) raises -> GraphRepr:
     return GraphRepr(jit(func))

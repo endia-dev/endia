@@ -10,28 +10,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from sys.ffi import DLHandle
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import CString, call_dylib_func, exchange
-from memory import UnsafePointer
+from nabla.compiler._utils import null_ptr, CString, call_dylib_func, exchange
+from std.memory import UnsafePointer
 
 
-@value
-@register_passable("trivial")
-struct CStatus:
+struct CStatus(TrivialRegisterPassable, ImplicitlyCopyable):
     """Represents Status ptr from Engine."""
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias IsErrorFnName = "M_isError"
-    alias GetErrorFnName = "M_getError"
-    alias FreeStatusFnName = "M_freeStatus"
+    comptime IsErrorFnName = "M_isError"
+    comptime GetErrorFnName = "M_getError"
+    comptime FreeStatusFnName = "M_freeStatus"
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn is_error(self, lib: DLHandle) -> Bool:
+    def is_error(self, lib: DLHandle) -> Bool:
         """
         Check if status is error.
 
@@ -40,36 +38,36 @@ struct CStatus:
         """
         return call_dylib_func[Bool](lib, Self.IsErrorFnName, self)
 
-    fn get_error(self, lib: DLHandle) -> String:
+    def get_error(self, lib: DLHandle) -> String:
         """
         Get Error String from Engine library.
         """
         var error = call_dylib_func[CString](lib, Self.GetErrorFnName, self)
-        return error.__str__()
+        return String(error)
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         """
         Free the status ptr.
         """
         call_dylib_func(lib, Self.FreeStatusFnName, self)
 
 
-struct Status(Stringable):
+struct Status(Writable):
     var ptr: CStatus
     var lib: DLHandle
 
-    alias NewStatusFnName = "M_newStatus"
+    comptime NewStatusFnName = "M_newStatus"
 
     @implicit
-    fn __init__(out self, lib: DLHandle):
+    def __init__(out self, lib: DLHandle):
         self.ptr = call_dylib_func[CStatus](lib, self.NewStatusFnName)
         self.lib = lib
 
-    fn __moveinit__(out self, owned existing: Self):
-        self.ptr = exchange[CStatus](existing.ptr, UnsafePointer[NoneType]())
+    def __init__(out self, *, deinit existing: Self):
+        self.ptr = exchange[CStatus](existing.ptr, null_ptr[NoneType]())
         self.lib = existing.lib
 
-    fn __bool__(self) -> Bool:
+    def __bool__(self) -> Bool:
         """
         Check if status is error.
 
@@ -78,7 +76,7 @@ struct Status(Stringable):
         """
         return self.ptr.is_error(self.lib)
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """
         Get Error String.
 
@@ -89,11 +87,14 @@ struct Status(Stringable):
             return self.ptr.get_error(self.lib)
         return ""
 
-    fn borrow_ptr(self) -> CStatus:
+    def borrow_ptr(self) -> CStatus:
         """
         Borrow the underlying C ptr.
         """
         return self.ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.lib)
+
+    def write_to[W: Writer](self, mut writer: W):
+        writer.write(self.__str__())

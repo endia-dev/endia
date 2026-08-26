@@ -11,68 +11,64 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections.optional import Optional
-from sys.ffi import DLHandle
-from sys.param_env import is_defined
+from std.collections.optional import Optional
+from nabla.compiler._dlhandle import DLHandle
+from std.sys.param_env import is_defined
 
-from nabla.compiler._utils import call_dylib_func, exchange
+from nabla.compiler._utils import null_ptr, call_dylib_func, exchange
 from nabla.compiler.driver import Device
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._status import Status
 
-alias MODULAR_PRODUCTION = is_defined["MODULAR_PRODUCTION"]()
+comptime MODULAR_PRODUCTION = is_defined["MODULAR_PRODUCTION"]()
 
 
-@value
-@register_passable("trivial")
-struct AllocatorType:
+struct AllocatorType(TrivialRegisterPassable, ImplicitlyCopyable):
     var value: Int32
     # This needs to map M_AllocatorType enum on the C API side.
-    alias SYSTEM = Int32(0)
-    alias CACHING = Int32(1)
+    comptime SYSTEM = Int32(0)
+    comptime CACHING = Int32(1)
 
     @always_inline("nodebug")
     @implicit
-    fn __init__(out self, value: Int32):
+    def __init__(out self, value: Int32):
         self.value = value
 
     @always_inline("nodebug")
-    fn __ne__(self, rhs: Int32) -> Bool:
-        return self.value != rhs.value
+    def __ne__(self, rhs: Int32) -> Bool:
+        return self.value != rhs
 
 
-@value
-@register_passable("trivial")
-struct CRuntimeConfig:
-    var ptr: UnsafePointer[NoneType]
+struct CRuntimeConfig(TrivialRegisterPassable, ImplicitlyCopyable):
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias FreeRuntimeConfigFnName = "M_freeRuntimeConfig"
-    alias SetAllocatorTypeFnName = "M_setAllocatorType"
-    alias SetDeviceFnName = "M_setDevice"
-    alias SetMaxContextFnName = "M_setMaxContext"
-    alias SetAPILanguageFnName = "M_setAPILanguage"
+    comptime FreeRuntimeConfigFnName = "M_freeRuntimeConfig"
+    comptime SetAllocatorTypeFnName = "M_setAllocatorType"
+    comptime SetDeviceFnName = "M_setDevice"
+    comptime SetMaxContextFnName = "M_setMaxContext"
+    comptime SetAPILanguageFnName = "M_setAPILanguage"
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeRuntimeConfigFnName, self)
 
-    fn set_device(self, lib: DLHandle, device: Device):
+    def set_device(self, lib: DLHandle, device: Device):
         call_dylib_func(lib, Self.SetDeviceFnName, self, device._cdev)
 
-    fn set_api_language(self, lib: DLHandle, source: String):
+    def set_api_language(self, lib: DLHandle, source: String):
         call_dylib_func(
             lib, Self.SetAPILanguageFnName, self, source.unsafe_ptr()
         )
 
-    fn set_allocator_type(self, lib: DLHandle, allocator_type: AllocatorType):
+    def set_allocator_type(self, lib: DLHandle, allocator_type: AllocatorType):
         call_dylib_func(lib, Self.SetAllocatorTypeFnName, self, allocator_type)
 
-    fn set_max_context(
-        self, lib: DLHandle, max_context: UnsafePointer[NoneType]
+    def set_max_context(
+        self, lib: DLHandle, max_context: UnsafePointer[NoneType, MutUntrackedOrigin]
     ) -> None:
         call_dylib_func(lib, Self.SetMaxContextFnName, self, max_context)
 
@@ -81,14 +77,14 @@ struct RuntimeConfig:
     var ptr: CRuntimeConfig
     var lib: DLHandle
 
-    alias NewRuntimeConfigFnName = "M_newRuntimeConfig"
+    comptime NewRuntimeConfigFnName = "M_newRuntimeConfig"
 
-    fn __init__(
+    def __init__(
         out self,
         lib: DLHandle,
         device: Device,
         allocator_type: AllocatorType = AllocatorType.CACHING,
-        max_context: UnsafePointer[NoneType] = UnsafePointer[NoneType](),
+        max_context: OptionalPointer[NoneType, MutUntrackedOrigin] = {},
     ):
         self.ptr = call_dylib_func[CRuntimeConfig](
             lib, Self.NewRuntimeConfigFnName
@@ -98,7 +94,7 @@ struct RuntimeConfig:
             # `mojo-run` already has an existing `M::Context`.
             # Set the runtime config to reuse this existing context, rather
             # than trying to recreate a new one.
-            self.ptr.set_max_context(lib, max_context)
+            self.ptr.set_max_context(lib, max_context.value())
 
         self.lib = lib
 
@@ -109,34 +105,32 @@ struct RuntimeConfig:
 
         self.ptr.set_api_language(self.lib, "mojo")
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = exchange[CRuntimeConfig](
-            existing.ptr, UnsafePointer[NoneType]()
+            existing.ptr, null_ptr[NoneType]()
         )
         self.lib = existing.lib
 
-    fn borrow_ptr(self) -> CRuntimeConfig:
+    def borrow_ptr(self) -> CRuntimeConfig:
         """
         Borrow the underlying C ptr.
         """
         return self.ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.lib)
 
 
-@value
-@register_passable("trivial")
-struct CRuntimeContext:
-    var ptr: UnsafePointer[NoneType]
+struct CRuntimeContext(TrivialRegisterPassable, ImplicitlyCopyable):
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    alias FreeRuntimeContextFnName = "M_freeRuntimeContext"
+    comptime FreeRuntimeContextFnName = "M_freeRuntimeContext"
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeRuntimeContextFnName, self)
 
 
@@ -144,10 +138,10 @@ struct RuntimeContext:
     var ptr: CRuntimeContext
     var lib: DLHandle
 
-    alias NewRuntimeContextFnName = "M_newRuntimeContext"
-    alias SetDebugPrintOptionsFnName = "M_setDebugPrintOptions"
+    comptime NewRuntimeContextFnName = "M_newRuntimeContext"
+    comptime SetDebugPrintOptionsFnName = "M_setDebugPrintOptions"
 
-    fn __init__(out self, owned config: RuntimeConfig, lib: DLHandle):
+    def __init__(out self, var config: RuntimeConfig, lib: DLHandle):
         var status = Status(lib)
         self.ptr = call_dylib_func[CRuntimeContext](
             lib,
@@ -156,29 +150,29 @@ struct RuntimeContext:
             status.borrow_ptr(),
         )
         if status:
-            print(status.__str__())
-            self.ptr = UnsafePointer[NoneType]()
+            print(String(status))
+            self.ptr = null_ptr[NoneType]()
         _ = config^
         self.lib = lib
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = exchange[CRuntimeContext](
-            existing.ptr, UnsafePointer[NoneType]()
+            existing.ptr, null_ptr[NoneType]()
         )
         self.lib = existing.lib
 
-    fn borrow_ptr(self) -> CRuntimeContext:
+    def borrow_ptr(self) -> CRuntimeContext:
         return self.ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.lib)
         _ = self.lib
 
-    fn set_debug_print_options(
+    def set_debug_print_options(
         mut self,
         style: PrintStyle,
         precision: UInt,
-        owned output_directory: String,
+        var output_directory: String,
     ):
         _ = call_dylib_func[CRuntimeContext](
             self.lib,
@@ -186,16 +180,15 @@ struct RuntimeContext:
             self.ptr,
             style.style,
             precision,
-            output_directory.unsafe_cstr_ptr(),
+            output_directory.as_c_string_slice().unsafe_ptr(),
         )
 
 
-@value
-@register_passable("trivial")
-struct PrintStyle:
+@fieldwise_init
+struct PrintStyle(TrivialRegisterPassable, ImplicitlyCopyable):
     var style: Int32
 
-    alias COMPACT = PrintStyle(0)
-    alias FULL = PrintStyle(1)
-    alias BINARY = PrintStyle(2)
-    alias NONE = PrintStyle(3)
+    comptime COMPACT = PrintStyle(0)
+    comptime FULL = PrintStyle(1)
+    comptime BINARY = PrintStyle(2)
+    comptime NONE = PrintStyle(3)

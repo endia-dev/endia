@@ -14,273 +14,273 @@
 import nabla
 
 
-fn test_sum0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.sum(x, List(0))
-        return List(x)
+        x = nabla.sum(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(3, 4):
+    if res.shape() == [3, 4]:
         print("✅ Test (sum0) passed.")
     else:
         print("❌ Test (sum0) failed.")
-        print("Expected shape: (3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (3, 4), but got: ", String(res.shape()))
 
 
-fn test_sum1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0))
-        return List(x)
+        x = nabla.sum(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 4):
+    if res.shape() == [2, 4]:
         print("✅ Test (sum1) passed.")
     else:
         print("❌ Test (sum1) failed.")
-        print("Expected shape: (2, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 4), but got: ", String(res.shape()))
 
 
-fn test_sum2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0))
-        return List(x)
+        x = nabla.sum(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3):
+    if res.shape() == [2, 3]:
         print("✅ Test (sum2) passed.")
     else:
         print("❌ Test (sum2) failed.")
-        print("Expected shape: (2, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3), but got: ", String(res.shape()))
 
 
-fn test_sum3() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum3() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0))
-        return List(x)
+        x = nabla.sum(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4):
+    if res.shape() == [2, 3, 4]:
         print("✅ Test (sum3) passed.")
     else:
         print("❌ Test (sum3) failed.")
-        print("Expected shape: (2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_sum4() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum4() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.sum(x, List(0, 1))
-        return List(x)
+        x = nabla.sum(x, [0, 1])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(4):
+    if res.shape() == [4]:
         print("✅ Test (sum4) passed.")
     else:
         print("❌ Test (sum4) failed.")
-        print("Expected shape: (4), but got: ", res.shape().__str__())
+        print("Expected shape: (4), but got: ", String(res.shape()))
 
 
-fn test_sum5() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum5() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0, 1))
-        return List(x)
+        x = nabla.sum(x, [0, 1])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2):
+    if res.shape() == [2]:
         print("✅ Test (sum5) passed.")
     else:
         print("❌ Test (sum5) failed.")
-        print("Expected shape: (2), but got: ", res.shape().__str__())
+        print("Expected shape: (2), but got: ", String(res.shape()))
 
 
-fn test_sum6() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum6() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0), act_on_batch_dims=True)
-        return List(x)
+        x = nabla.sum(x, [0], act_on_batch_dims=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(3, 4):
+    if res.shape() == [3, 4]:
         print("✅ Test (sum6) passed.")
     else:
         print("❌ Test (sum6) failed.")
-        print("Expected shape: (3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (3, 4), but got: ", String(res.shape()))
 
 
-fn test_sum7() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum7() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0, 1), act_on_batch_dims=True)
-        return List(x)
+        x = nabla.sum(x, [0, 1], act_on_batch_dims=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(4):
+    if res.shape() == [4]:
         print("✅ Test (sum7) passed.")
     else:
         print("❌ Test (sum7) failed.")
-        print("Expected shape: (4), but got: ", res.shape().__str__())
+        print("Expected shape: (4), but got: ", String(res.shape()))
 
 
-fn test_sum8() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum8() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.sum(x, List(0), keep_dim=True)
-        return List(x)
+        x = nabla.sum(x, [0], keep_dim=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 3, 4):
+    if res.shape() == [1, 3, 4]:
         print("✅ Test (sum8) passed.")
     else:
         print("❌ Test (sum8) failed.")
-        print("Expected shape: (1, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_sum9() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum9() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0), keep_dim=True)
-        return List(x)
+        x = nabla.sum(x, [0], keep_dim=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 1, 4):
+    if res.shape() == [2, 1, 4]:
         print("✅ Test (sum9) passed.")
     else:
         print("❌ Test (sum9) failed.")
-        print("Expected shape: (2, 1, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 1, 4), but got: ", String(res.shape()))
 
 
-fn test_sum10() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum10() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0), keep_dim=True)
-        return List(x)
+        x = nabla.sum(x, [0], keep_dim=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 1):
+    if res.shape() == [2, 3, 1]:
         print("✅ Test (sum10) passed.")
     else:
         print("❌ Test (sum10) failed.")
-        print("Expected shape: (2, 3, 1), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 1), but got: ", String(res.shape()))
 
 
-fn test_sum11() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum11() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.sum(x, List(0, 1), keep_dim=True)
-        return List(x)
+        x = nabla.sum(x, [0, 1], keep_dim=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 1, 4):
+    if res.shape() == [1, 1, 4]:
         print("✅ Test (sum11) passed.")
     else:
         print("❌ Test (sum11) failed.")
-        print("Expected shape: (1, 1, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 1, 4), but got: ", String(res.shape()))
 
 
-fn test_sum12() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum12() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0, 1), keep_dim=True)
-        return List(x)
+        x = nabla.sum(x, [0, 1], keep_dim=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 1, 1):
+    if res.shape() == [2, 1, 1]:
         print("✅ Test (sum12) passed.")
     else:
         print("❌ Test (sum12) failed.")
-        print("Expected shape: (2, 1, 1), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 1, 1), but got: ", String(res.shape()))
 
 
-fn test_sum13() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum13() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0), keep_dim=True, act_on_batch_dims=True)
-        return List(x)
+        x = nabla.sum(x, [0], keep_dim=True, act_on_batch_dims=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 3, 4):
+    if res.shape() == [1, 3, 4]:
         print("✅ Test (sum13) passed.")
     else:
         print("❌ Test (sum13) failed.")
-        print("Expected shape: (1, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_sum14() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_sum14() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.sum(x, List(0, 1), keep_dim=True, act_on_batch_dims=True)
-        return List(x)
+        x = nabla.sum(x, [0, 1], keep_dim=True, act_on_batch_dims=True)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 1, 4):
+    if res.shape() == [1, 1, 4]:
         print("✅ Test (sum14) passed.")
     else:
         print("❌ Test (sum14) failed.")
-        print("Expected shape: (1, 1, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 1, 4), but got: ", String(res.shape()))

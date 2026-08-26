@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 """Helpers for building custom ops."""
 
-from collections import List
-from collections.string.string_slice import StaticString
+from std.collections import List
+from std.collections.string import StaticString
 
 from nabla.compiler.graph._attributes import _string_attr
 from nabla.compiler.graph.type import Type
@@ -36,7 +36,7 @@ def custom[name: StaticString](value: Symbol, out_type: Type) -> Symbol:
     Returns:
         A symbolic value representing the output of the op in the graph.
     """
-    return custom[name](List(value), List(out_type))[0]
+    return custom[name]([value], [out_type])[0]
 
 
 def custom[name: StaticString](values: List[Symbol], out_type: Type) -> Symbol:
@@ -81,4 +81,4 @@ def custom[
     """
     var g = values[0].graph()
     var symbol_attr = _string_attr(g._context(), "symbol", String(name))
-    return g.nvop("mo.custom", values, out_types, List(symbol_attr))
+    return g.nvop("mo.custom", values, out_types, [symbol_attr])

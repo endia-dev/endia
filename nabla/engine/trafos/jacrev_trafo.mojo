@@ -23,52 +23,55 @@ from nabla.engine.utils import (
 )
 from nabla.api.utils import none
 from nabla.api.array import zeros
+from nabla.api.ops import decr_batch_dim_ctr, incr_batch_dim_ctr, split
 
 
-fn jacrev_start_rule(
+def jacrev_start_rule(
     mut args: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
-    return args
+    return args.copy()
 
 
-fn jacrev_call(
+def jacrev_call(
     meta: TrafoMeta,
     args: List[Array],
 ) raises -> List[Array]:
-    var primals = args
-    for primal in primals:
-        primal[].requires_pullback_(True)
-    return primals
+    var primals = args.copy()
+    for ref primal in primals:
+        primal.requires_pullback_(True)
+    return primals.copy()
 
 
-fn jacrev_end_rule(
+def jacrev_end_rule(
     mut args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
-    var primals = args
+    var primals = args.copy()
 
-    sizes, tangents = std_basis(res)
+    var basis = std_basis(res)
+    var sizes = basis[0].copy()
+    var tangents = basis[1].copy()
 
     for i in range(len(tangents)):
         tangents[i] = incr_batch_dim_ctr(tangents[i])
 
-    for primal in primals:
-        primal[].requires_pullback_(True)
+    for ref primal in primals:
+        primal.requires_pullback_(True)
 
     if len(tangents) != len(res):
-        raise "Error in jacrev_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + len(
+        raise "Error in jacrev_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + String(len(
             tangents
-        ).__str__() + " vs. len(res) = " + len(
+        )) + " vs. len(res) = " + String(len(
             res
-        ).__str__()
+        ))
 
     var outputs = List[DeviceArray]()
     for i in range(len(res)):
         var device_array = res[i].device_array
         var tangent = tangents[i].device_array
-        device_array[].impl[].cotangent = List(tangent[].impl)
+        device_array[].impl[].cotangent = [tangent[].impl]
         outputs.append(device_array[])
 
     if len(meta["with_remat"]) == 0:
@@ -79,8 +82,9 @@ fn jacrev_end_rule(
     var grads = List[Array]()
     for i in range(len(primals)):
         if len(primals[i].device_array[].impl[].cotangent) == 0:
-            var shape = List(sizes[i]) + primals[i].shape()
-            var empty_grad = zeros(shape, primals[i].dtype())
+            var shape: List[Int] = [sizes[i]]
+            shape += primals[i].shape()
+            var empty_grad = zeros(shape.copy(), primals[i].dtype())
             empty_grad.batch_dim_ctr_(primals[i].batch_dim_ctr())
             grads.append(empty_grad)
         else:
@@ -93,7 +97,7 @@ fn jacrev_end_rule(
     for j in range(len(grads)):
         splits.append(split(grads[j], sizes=sizes, axis=0))
 
-    var values = outputs
+    var values = outputs.copy()
     for j in range(len(values)):
         for i in range(len(args)):
             var grad = splits[i][j]
@@ -105,19 +109,19 @@ fn jacrev_end_rule(
             batch_dim_ctr_out = (
                 batch_dim_ctr_out if batch_dim_ctr_out != none else 0
             )
-            var arg_shape = args[i].shape()[batch_dim_ctr_arg:]
-            var out_shape = values[j].shape()[batch_dim_ctr_out:]
+            var arg_shape = List(args[i].shape()[batch_dim_ctr_arg:])
+            var out_shape = List(values[j].shape()[batch_dim_ctr_out:])
             if len(arg_shape) == 1 and arg_shape[0] == 1:
                 arg_shape.clear()
             elif len(out_shape) == 1 and out_shape[0] == 1:
                 out_shape.clear()
 
-            var shape = out_shape + arg_shape
+            var shape = out_shape + arg_shape.copy()
             reshaped_grad = grad.reshape(shape)
             cotangents.append(reshaped_grad)
 
-    for array in primals:
-        array[].device_array[].impl[].cotangent.clear()
-        array[].requires_pullback_(False)
+    for ref array in primals:
+        array.device_array[].impl[].cotangent.clear()
+        array.requires_pullback_(False)
 
-    return cotangents
+    return cotangents.copy()

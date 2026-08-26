@@ -14,480 +14,480 @@
 import nabla
 
 
-fn test_broadcast0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.broadcast_to(x, (5, 2, 3, 4))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(5, 2, 3, 4):
+    if res.shape() == [5, 2, 3, 4]:
         print("✅ Test (broadcast0) passed.")
     else:
         print("❌ Test (broadcast0) failed.")
-        print("Expected shape: (5, 2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (5, 2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_broadcast1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (5, 3, 4))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 5, 3, 4):
+    if res.shape() == [2, 5, 3, 4]:
         print("✅ Test (broadcast1) passed.")
     else:
         print("❌ Test (broadcast1) failed.")
-        print("Expected shape: (2, 5, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 5, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_broadcast2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (5, 4))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 5, 4):
+    if res.shape() == [2, 3, 5, 4]:
         print("✅ Test (broadcast2) passed.")
     else:
         print("❌ Test (broadcast2) failed.")
-        print("Expected shape: (2, 3, 5, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 5, 4), but got: ", String(res.shape()))
 
 
-fn test_broadcast3() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast3() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (5,))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4, 5):
+    if res.shape() == [2, 3, 4, 5]:
         print("✅ Test (broadcast3) passed.")
     else:
         print("❌ Test (broadcast3) failed.")
-        print("Expected shape: (2, 3, 4, 5), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4, 5), but got: ", String(res.shape()))
 
 
-fn test_broadcast4() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast4() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.broadcast_to(x, (4, 5, 2, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(4, 5, 2, 3):
+    if res.shape() == [4, 5, 2, 3]:
         print("✅ Test (broadcast3) passed.")
     else:
         print("❌ Test (broadcast3) failed.")
-        print("Expected shape: (4, 5, 2, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (4, 5, 2, 3), but got: ", String(res.shape()))
 
 
-fn test_broadcast5() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast5() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (4, 5, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 4, 5, 3):
+    if res.shape() == [2, 4, 5, 3]:
         print("✅ Test (broadcast3) passed.")
     else:
         print("❌ Test (broadcast3) failed.")
-        print("Expected shape: (2, 4, 5, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 4, 5, 3), but got: ", String(res.shape()))
 
 
-fn test_broadcast6() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast6() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (4, 5))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4, 5):
+    if res.shape() == [2, 3, 4, 5]:
         print("✅ Test (broadcast3) passed.")
     else:
         print("❌ Test (broadcast3) failed.")
-        print("Expected shape: (2, 3, 4, 5), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4, 5), but got: ", String(res.shape()))
 
 
-fn test_reshape0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_reshape0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.reshape(x, (2, 3, 4, 5))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((6, 20))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4, 5):
+    if res.shape() == [2, 3, 4, 5]:
         print("✅ Test (reshape0) passed.")
     else:
         print("❌ Test (reshape0) failed.")
-        print("Expected shape: (2, 3, 4, 5), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4, 5), but got: ", String(res.shape()))
 
 
-fn test_reshape1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_reshape1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.reshape(x, (4, 5))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((6, 20))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(6, 4, 5):
+    if res.shape() == [6, 4, 5]:
         print("✅ Test (reshape1) passed.")
     else:
         print("❌ Test (reshape1) failed.")
-        print("Expected shape: (6, 4, 5), but got: ", res.shape().__str__())
+        print("Expected shape: (6, 4, 5), but got: ", String(res.shape()))
 
 
-fn test_reshape2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_reshape2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.reshape(x, (1, 1))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((6, 20))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(6, 20, 1, 1):
+    if res.shape() == [6, 20, 1, 1]:
         print("✅ Test (reshape2) passed.")
     else:
         print("❌ Test (reshape2) failed.")
-        print("Expected shape: (6, 20, 1, 1), but got: ", res.shape().__str__())
+        print("Expected shape: (6, 20, 1, 1), but got: ", String(res.shape()))
 
 
-fn test_reshape3() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_reshape3() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.reshape(x, (120,))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((6, 20))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(
+    if res.shape() == [
         120,
-    ):
+    ]:
         print("✅ Test (reshape3) passed.")
     else:
         print("❌ Test (reshape3) failed.")
-        print("Expected shape: (120,), but got: ", res.shape().__str__())
+        print("Expected shape: (120,), but got: ", String(res.shape()))
 
 
-fn test_squeeze0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_squeeze0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.squeeze(x, List(0))
-        return List(x)
+        x = nabla.squeeze(x, [0])
+        return [x]
 
     var x = nabla.arange((1, 2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4):
+    if res.shape() == [2, 3, 4]:
         print("✅ Test (squeeze) passed.")
     else:
         print("❌ Test (squeeze) failed.")
-        print("Expected shape: (2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_squeeze1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_squeeze1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.squeeze(x, List(0))
-        return List(x)
+        x = nabla.squeeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 1, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4):
+    if res.shape() == [2, 3, 4]:
         print("✅ Test (squeeze) passed.")
     else:
         print("❌ Test (squeeze) failed.")
-        print("Expected shape: (2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_squeeze2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_squeeze2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.squeeze(x, List(0))
-        return List(x)
+        x = nabla.squeeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 1, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4):
+    if res.shape() == [2, 3, 4]:
         print("✅ Test (squeeze) passed.")
     else:
         print("❌ Test (squeeze) failed.")
-        print("Expected shape: (2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_squeeze3() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_squeeze3() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.squeeze(x, List(0))
-        return List(x)
+        x = nabla.squeeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4, 1))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4):
+    if res.shape() == [2, 3, 4]:
         print("✅ Test (squeeze) passed.")
     else:
         print("❌ Test (squeeze) failed.")
-        print("Expected shape: (2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_unsqueeze0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_unsqueeze0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
-        x = nabla.unsqueeze(x, List(0))
-        return List(x)
+        x = nabla.unsqueeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 2, 3, 4):
+    if res.shape() == [1, 2, 3, 4]:
         print("✅ Test (unsqueeze) passed.")
     else:
         print("❌ Test (unsqueeze) failed.")
-        print("Expected shape: (1, 2, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 2, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_unsqueeze1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_unsqueeze1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.unsqueeze(x, List(0))
-        return List(x)
+        x = nabla.unsqueeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 1, 3, 4):
+    if res.shape() == [2, 1, 3, 4]:
         print("✅ Test (unsqueeze) passed.")
     else:
         print("❌ Test (unsqueeze) failed.")
-        print("Expected shape: (2, 1, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 1, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_unsqueeze2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_unsqueeze2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.unsqueeze(x, List(0))
-        return List(x)
+        x = nabla.unsqueeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 1, 4):
+    if res.shape() == [2, 3, 1, 4]:
         print("✅ Test (unsqueeze) passed.")
     else:
         print("❌ Test (unsqueeze) failed.")
-        print("Expected shape: (2, 3, 1, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 1, 4), but got: ", String(res.shape()))
 
 
-fn test_unsqueeze3() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_unsqueeze3() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
-        x = nabla.unsqueeze(x, List(0))
-        return List(x)
+        x = nabla.unsqueeze(x, [0])
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 4, 1):
+    if res.shape() == [2, 3, 4, 1]:
         print("✅ Test (unsqueeze) passed.")
     else:
         print("❌ Test (unsqueeze) failed.")
-        print("Expected shape: (2, 3, 4, 1), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 4, 1), but got: ", String(res.shape()))
 
 
-fn test_slice0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_slice0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = x[1:2]
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(1, 3, 4):
+    if res.shape() == [1, 3, 4]:
         print("✅ Test (slice) passed.")
     else:
         print("❌ Test (slice) failed.")
-        print("Expected shape: (1, 3, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (1, 3, 4), but got: ", String(res.shape()))
 
 
-fn test_slice1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_slice1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = x[1:3]
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 2, 4):
+    if res.shape() == [2, 2, 4]:
         print("✅ Test (slice) passed.")
     else:
         print("❌ Test (slice) failed.")
-        print("Expected shape: (2, 2, 4), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 2, 4), but got: ", String(res.shape()))
 
 
-fn test_slice2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_slice2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.incr_batch_dim_ctr(x)
         x = x[0:2]
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3, 4))
-    var res = test_func(List(x))[0]
+    var res = test_func([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3, 2):
+    if res.shape() == [2, 3, 2]:
         print("✅ Test (slice) passed.")
     else:
         print("❌ Test (slice) failed.")
-        print("Expected shape: (2, 3, 2), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3, 2), but got: ", String(res.shape()))
 
 
-fn test_broadcast_vjp0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast_vjp0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.broadcast_to(x, (4, 2, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
     var tangent = nabla.ones((4, 2, 3))
-    var res = nabla.vjp(test_func, List(x))[1](List(tangent))[0]
+    var res = nabla.vjp(test_func, [x])[1]([tangent])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3):
+    if res.shape() == [2, 3]:
         print("✅ Test (broadcast_vjp0) passed.")
     else:
         print("❌ Test (broadcast_vjp0) failed.")
-        print("Expected shape: (2, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3), but got: ", String(res.shape()))
 
 
-fn test_broadcast_vjp1() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast_vjp1() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.incr_batch_dim_ctr(x)
         x = nabla.broadcast_to(x, (4, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
     var tangent = nabla.ones((2, 4, 3))
     tangent = nabla.incr_batch_dim_ctr(tangent)
-    var res = nabla.vjp(test_func, List(x))[1](List(tangent))[0]
+    var res = nabla.vjp(test_func, [x])[1]([tangent])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 3):
+    if res.shape() == [2, 3]:
         print("✅ Test (broadcast_vjp1) passed.")
     else:
         print("❌ Test (broadcast_vjp1) failed.")
-        print("Expected shape: (2, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 3), but got: ", String(res.shape()))
 
 
-fn test_broadcast_vjp2() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast_vjp2() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.broadcast_to(x, (4, 2, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
     var tangent = nabla.ones((2, 4, 2, 3))
     tangent = nabla.incr_batch_dim_ctr(tangent)
-    var res = nabla.vjp(test_func, List(x))[1](List(tangent))[0]
+    var res = nabla.vjp(test_func, [x])[1]([tangent])[0]
     _ = res.load(0)
 
-    if res.shape() == List(2, 2, 3):
+    if res.shape() == [2, 2, 3]:
         print("✅ Test (broadcast_vjp2) passed.")
     else:
         print("❌ Test (broadcast_vjp2) failed.")
-        print("Expected shape: (2, 2, 3), but got: ", res.shape().__str__())
+        print("Expected shape: (2, 2, 3), but got: ", String(res.shape()))
 
 
-fn test_broadcast_jacrev0() raises:
-    fn test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
+def test_broadcast_jacrev0() raises:
+    def test_func(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var x = args[0]
         x = nabla.broadcast_to(x, (4, 2, 3))
-        return List(x)
+        return [x]
 
     var x = nabla.arange((2, 3))
-    var res = nabla.jacrev(test_func)(List(x))[0]
+    var res = nabla.jacrev(test_func)([x])[0]
     _ = res.load(0)
 
-    if res.shape() == List(4, 2, 3, 2, 3):
+    if res.shape() == [4, 2, 3, 2, 3]:
         print("✅ Test (broadcast_jacrev0) passed.")
     else:
         print("❌ Test (broadcast_jacrev0) failed.")
         print(
-            "Expected shape: (4, 2, 3, 2, 3), but got: ", res.shape().__str__()
+            "Expected shape: (4, 2, 3, 2, 3), but got: ", String(res.shape())
         )

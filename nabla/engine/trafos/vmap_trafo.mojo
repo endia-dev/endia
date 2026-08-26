@@ -12,9 +12,17 @@
 # ===----------------------------------------------------------------------=== #
 
 
-from memory import ArcPointer
-from utils import Variant
+from std.memory import ArcPointer
+from std.utils import Variant
 from nabla.api.array import Array
+from nabla.api.ops import (
+    decr_batch_dim_ctr,
+    incr_batch_dim_ctr,
+    squeeze,
+    transpose,
+    unsqueeze,
+    broadcast_to,
+)
 from nabla.core.device_array import DeviceArray, zeros_like
 from nabla.engine.utils import (
     TrafoMeta,
@@ -26,16 +34,18 @@ from nabla.engine.utils import (
 from nabla.api.utils import none
 
 
-fn adapt_to_in_axis(
+def adapt_to_in_axis(
     mut arg: Array, in_axis: Int, batch_size: Int
 ) raises -> Array:
     if in_axis == none:
-        var res = unsqueeze(arg, List(0))
+        var res = unsqueeze(arg, [0])
         if batch_size > 1:
             var batch_dim_ctr = res.device_array[].impl[]._batch_dim_ctr
-            var shape = res.device_array[].impl[].shape[batch_dim_ctr:]
+            var shape = List[Int]()
+            for _d in res.device_array[].impl[].shape[batch_dim_ctr:]:
+                shape.append(_d)
             shape[0] = batch_size
-            res = broadcast_to(res, shape)
+            res = broadcast_to(res, shape.copy())
 
         res = incr_batch_dim_ctr(res)
         return res
@@ -56,12 +66,12 @@ fn adapt_to_in_axis(
             raise "Error: Invalid in_axis."
 
 
-fn adapt_to_out_axis(mut arg: Array, out_axis: Int) raises -> Array:
+def adapt_to_out_axis(mut arg: Array, out_axis: Int) raises -> Array:
     if out_axis == none:
         var idx = arg.device_array[].impl[]._batch_dim_ctr - 1
         var res = decr_batch_dim_ctr(arg)
         if arg.device_array[].impl[].shape[idx] == 1:
-            return squeeze(res, List(0))
+            return squeeze(res, [0])
         return res
     else:
         var axis = out_axis
@@ -82,7 +92,7 @@ fn adapt_to_out_axis(mut arg: Array, out_axis: Int) raises -> Array:
             raise "Error: Invalid out_axis."
 
 
-fn vmap_start_rule(
+def vmap_start_rule(
     mut args: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
@@ -105,7 +115,7 @@ fn vmap_start_rule(
             var size = args[i].shape()[axis + batch_dim_ctr]
             if batch_size != -1 and size != batch_size:
                 # batch_siez has been set before and was a different value -> Error
-                raise "Error in in_axes: ones axis has size " + size.__str__() + " but previous batch dimension size was defined as " + batch_size.__str__()
+                raise "Error in in_axes: ones axis has size " + String(size) + " but previous batch dimension size was defined as " + String(batch_size)
             if batch_size == -1:
                 batch_size = size
 
@@ -117,10 +127,10 @@ fn vmap_start_rule(
         var adapted_arg = adapt_to_in_axis(arg, axis, batch_size)
         adapted_args.append(adapted_arg)
 
-    return adapted_args
+    return adapted_args.copy()
 
 
-fn vmap_end_rule(
+def vmap_end_rule(
     mut args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
@@ -140,4 +150,4 @@ fn vmap_end_rule(
         new_res = adapt_to_out_axis(new_res, axis)
         adapted_res.append(new_res)
 
-    return adapted_res
+    return adapted_res.copy()

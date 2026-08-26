@@ -38,13 +38,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from collections import InlineArray, Optional
-from math import sqrt
-from sys import simdwidthof, sizeof
+from std.collections import InlineArray, Optional
+from std.math import sqrt
+from std.sys import simdwidthof, sizeof
 
-from algorithm import vectorize
+from std.algorithm import vectorize
 from nabla.compiler.tensor import Tensor, TensorShape
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from .quantization_encoding import QuantizationEncoding
 
@@ -90,7 +90,7 @@ struct BFloat16Encoding(QuantizationEncoding):
         # bfloat16 element in the innermost dimension.
         # Note that this implies the storage is row major.
         tensor_shape = tensor.shape()
-        buff_dims = List[Int, hint_trivial_type=True]()
+        buff_dims = List[Int]()
         for i in range(tensor_shape.rank() - 1):
             buff_dims.append(tensor_shape[i])
 
@@ -102,7 +102,7 @@ struct BFloat16Encoding(QuantizationEncoding):
         )
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the bfloat16 quantized encoding."""
         return "bfloat16"
 
@@ -128,20 +128,20 @@ struct Float32Encoding(QuantizationEncoding):
         raise "float32 quantize intentionally not implemented"
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the float32 quantized encoding."""
         return "float32"
 
 
-@value
-struct _BlockQ40:
+@fieldwise_init
+struct _BlockQ40(Copyable, Movable):
     """4-bit quantization.
 
     Constraints:
         The data layout must exactly match `block_q4_0` from ggml-quants.h.
     """
 
-    alias QK4_0 = 32
+    comptime QK4_0 = 32
     """Number of elements per Q4_0 block."""
 
     var d: Float16
@@ -154,13 +154,13 @@ struct _BlockQ40:
         d: Float16,
         qs: InlineArray[UInt8, Self.QK4_0 // 2],
     ):
-        constrained[sizeof[Self]() == sizeof[Float16]() + (Self.QK4_0 // 2)]()
+        comptime assert sizeof[Self]() == sizeof[Float16]() + (Self.QK4_0 // 2)
 
         self.d = d
         self.qs = qs
 
     @staticmethod
-    fn elements_per_block() -> Int:
+    def elements_per_block() -> Int:
         """Returns the number of elements per Q4_0 block."""
         return Self.QK4_0
 
@@ -202,7 +202,7 @@ struct Q4_0Encoding(QuantizationEncoding):
         if not tensor.num_elements():
             return Tensor[DType.uint8]()
 
-        alias elems_per_block = _BlockQ40.elements_per_block()
+        comptime elems_per_block = _BlockQ40.elements_per_block()
         tensor_shape = tensor.shape()
         cols = tensor_shape[-1]
         if cols % elems_per_block != 0:
@@ -210,7 +210,7 @@ struct Q4_0Encoding(QuantizationEncoding):
 
         # Q4_0 quantizes row-wise, so compute the output shape as the same as
         # the input shape, except with the last dimension packed as _BlockQ40.
-        buff_dims = List[Int, hint_trivial_type=True]()
+        buff_dims = List[Int]()
         for i in range(tensor_shape.rank() - 1):
             buff_dims.append(tensor_shape[i])
         # Compute number of bytes in last block, which is packed.
@@ -268,17 +268,17 @@ struct Q4_0Encoding(QuantizationEncoding):
         return quantized
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the Q4_0 quantized encoding."""
         return "q4_0"
 
 
 # Note that there is a compile definition in ggml-quants.h that allows setting
 # `QK_K=64`, which is useful for models with rows unaligned to 256 bits.
-alias QK_K = 256
+comptime QK_K = 256
 """Size of superblock quantized elements, in bytes."""
 
-alias K_SCALE_SIZE = 12
+comptime K_SCALE_SIZE = 12
 """Size of superblock scales and mins, in bytes."""
 
 
@@ -286,7 +286,7 @@ def _sum_squares[count: Int](ptr: UnsafePointer[Float32]) -> Float32:
     sum_squares = Float32(0.0)
 
     @parameter
-    fn agg[width: Int](i: Int):
+    def agg[width: Int](i: Int):
         var xs = ptr.load[width=width](i)
         sum_squares += (xs * xs).reduce_add()
 
@@ -300,7 +300,7 @@ def _pick_weights_q4_k_q5_k[
     weights = InlineArray[Float32, count](uninitialized=True)
 
     @parameter
-    fn fill[width: Int](i: Int):
+    def fill[width: Int](i: Int):
         var xs = ptr.load[width=width](i)
         weights.unsafe_ptr().store(i, rms + abs(xs))
 
@@ -311,14 +311,14 @@ def _pick_weights_q4_k_q5_k[
 def _find_extrema[
     count: Int
 ](ptr: UnsafePointer[Float32]) -> Tuple[Float32, Float32]:
-    alias prefix_size = min(count, simdwidthof[Float32]())
+    comptime prefix_size = min(count, simdwidthof[Float32]())
 
     prefix = ptr.load[width=prefix_size]()
     min_value = prefix.reduce_min()
     max_value = prefix.reduce_max()
 
     @parameter
-    fn agg_rest[width: Int](i: Int):
+    def agg_rest[width: Int](i: Int):
         var piece = ptr.load[width=width](i + prefix_size)
         min_value = min(min_value, piece.reduce_min())
         max_value = max(max_value, piece.reduce_max())
@@ -340,7 +340,7 @@ def _find_amax[
         return (abs_min, min)
 
 
-fn _unsigned_symmetric_quantize[
+def _unsigned_symmetric_quantize[
     nmax: Int, size: Int
 ](x: SIMD[DType.float32, size], *, iscale: Float32) -> SIMD[DType.uint8, size]:
     # Clamping occurs in float32 instead of uint8 to avoid undefined behavior
@@ -348,7 +348,7 @@ fn _unsigned_symmetric_quantize[
     return round(x * iscale).clamp(0, nmax).cast[DType.uint8]()
 
 
-fn _biased_symmetric_quantize[
+def _biased_symmetric_quantize[
     nmax: Int, size: Int
 ](x: SIMD[DType.float32, size], *, iscale: Float32) -> SIMD[DType.uint8, size]:
     # Clamping occurs in float32 instead of uint8 to avoid undefined behavior
@@ -364,7 +364,7 @@ def _biased_symmetric_quantize[
     quants = InlineArray[UInt8, count](uninitialized=True)
 
     @parameter
-    fn quantize_piece[width: Int](i: Int):
+    def quantize_piece[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var quant = _biased_symmetric_quantize[nmax](x, iscale=iscale)
         quants.unsafe_ptr().store(i, quant)
@@ -373,7 +373,7 @@ def _biased_symmetric_quantize[
     return quants
 
 
-fn _unbiased_symmetric_quantize[
+def _unbiased_symmetric_quantize[
     nmax: Int, size: Int
 ](x: SIMD[DType.float32, size], *, iscale: Float32) -> SIMD[DType.int8, size]:
     # Clamping occurs in float32 instead of uint8 to avoid undefined behavior
@@ -391,7 +391,7 @@ def _unbiased_symmetric_quantize[
     quants = InlineArray[Int8, count](uninitialized=True)
 
     @parameter
-    fn quantize_piece[width: Int](i: Int):
+    def quantize_piece[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var quant = _unbiased_symmetric_quantize[nmax](x, iscale=iscale)
         quants.unsafe_ptr().store(i, quant)
@@ -408,7 +408,7 @@ def _unbiased_symmetric_qdq[
     quants = InlineArray[Int8, count](uninitialized=True)
 
     @parameter
-    fn qdq_piece[width: Int](i: Int):
+    def qdq_piece[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var quant = _unbiased_symmetric_quantize[nmax](x, iscale=iscale)
         quants.unsafe_ptr().store(i, quant)
@@ -419,7 +419,7 @@ def _unbiased_symmetric_qdq[
     return quants
 
 
-fn _asymmetric_quantize[
+def _asymmetric_quantize[
     nmax: Int, size: Int
 ](x: SIMD[DType.float32, size], *, iscale: Float32, min: Float32) -> SIMD[
     DType.uint8, size
@@ -437,7 +437,7 @@ def _asymmetric_quantize[
     quants = InlineArray[UInt8, count](uninitialized=True)
 
     @parameter
-    fn quantize_piece[width: Int](i: Int):
+    def quantize_piece[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var quant = _asymmetric_quantize[nmax](x, iscale=iscale, min=min)
         quants.unsafe_ptr().store(i, quant)
@@ -464,7 +464,7 @@ def _measure_asymmetric_quant_error[
     error = Float32(0.0)
 
     @parameter
-    fn agg[width: Int](i: Int):
+    def agg[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var quant = quants.load[width=width](i)
         var weight = weights.load[width=width](i)
@@ -494,7 +494,7 @@ def _measure_asymmetric_quant_error[
     error = Float32(0.0)
 
     @parameter
-    fn agg[width: Int](i: Int):
+    def agg[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var weight = weights.load[width=width](i)
         var quantized = _asymmetric_quantize[nmax](x, iscale=iscale, min=min_x)
@@ -506,8 +506,8 @@ def _measure_asymmetric_quant_error[
     return error
 
 
-@value
-struct _AsymmetricDequantParameters:
+@fieldwise_init
+struct _AsymmetricDequantParameters(Copyable, Movable):
     var scale: Float32
     var min: Float32
 
@@ -526,7 +526,7 @@ def _refit_asymmetric[
     sum_xl = Float32(0.0)
 
     @parameter
-    fn agg[width: Int](i: Int):
+    def agg[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var l = quants.load[width=width](i).cast[DType.float32]()
         var w = weights.load[width=width](i)
@@ -601,8 +601,8 @@ def _pick_subblock_scale_min_q4_k_q5_k[
     return _AsymmetricDequantParameters(scale=scale, min=min_x)
 
 
-@value
-struct _BlockQ4K:
+@fieldwise_init
+struct _BlockQ4K(Copyable, Movable):
     """4-bit quantization.
 
     8 blocks of 32 elements each.
@@ -632,9 +632,7 @@ struct _BlockQ4K:
         scales: InlineArray[UInt8, K_SCALE_SIZE],
         qs: InlineArray[UInt8, QK_K // 2],
     ):
-        constrained[
-            sizeof[Self]() == 2 * sizeof[Float16]() + K_SCALE_SIZE + QK_K // 2
-        ]()
+        comptime assert sizeof[Self]() == 2 * sizeof[Float16]() + K_SCALE_SIZE + QK_K // 2
 
         self.d = d
         self.dmin = dmin
@@ -642,17 +640,17 @@ struct _BlockQ4K:
         self.qs = qs
 
     @staticmethod
-    fn elements_per_superblock() -> Int:
+    def elements_per_superblock() -> Int:
         """Returns the number of elements per Q4_K superblock."""
         return QK_K
 
     @staticmethod
-    fn elements_per_subblock() -> Int:
+    def elements_per_subblock() -> Int:
         """Returns the number of elements per Q4_K subblock."""
         return 32
 
     @staticmethod
-    fn num_subblocks() -> Int:
+    def num_subblocks() -> Int:
         """Returns the number of subblocks per Q4_K superblock."""
         return Self.elements_per_superblock() // Self.elements_per_subblock()
 
@@ -664,9 +662,7 @@ def _quantize_superblock_params[
     mut scales: InlineArray[Float32, num_subblocks],
     mut mins: InlineArray[Float32, num_subblocks],
 ) -> Tuple[Float16, Float16, InlineArray[UInt8, K_SCALE_SIZE]]:
-    constrained[
-        num_subblocks == 8, "K scale packing only designed for 8 subblocks"
-    ]()
+    comptime assert num_subblocks == 8, "K scale packing only designed for 8 subblocks"
     _, max_scale = _find_extrema[num_subblocks](scales.unsafe_ptr())
     # Mins are expected to usually be negative, so we actually take the minimum
     # here, invert the sign, and call _that_ the maximum.
@@ -676,7 +672,7 @@ def _quantize_superblock_params[
         max_scale = 0
     if max_min < 0:
         max_min = 0
-    alias nmax = 63
+    comptime nmax = 63
     d = (max_scale / nmax).cast[DType.float16]()
     dmin = (max_min / nmax).cast[DType.float16]()
     inv_scale = nmax / max_scale
@@ -724,7 +720,7 @@ def _quantize_superblock_params[
 def _qn_k_quantize[
     BlockType: Copyable & Movable,
     elems_per_superblock: Int,
-    quantize_superblock: fn (UnsafePointer[Float32]) raises -> BlockType,
+    quantize_superblock: def (UnsafePointer[Float32]) raises thin -> BlockType,
 ](tensor: Tensor[DType.float32]) -> Tensor[DType.uint8]:
     if not tensor.num_elements():
         return Tensor[DType.uint8]()
@@ -736,7 +732,7 @@ def _qn_k_quantize[
 
     # Qn_K quantizes row-wise, so compute the output shape as the same as
     # the input shape, except with the last dimension packed as BlockType.
-    buff_dims = List[Int, hint_trivial_type=True]()
+    buff_dims = List[Int]()
     for i in range(tensor_shape.rank() - 1):
         buff_dims.append(tensor_shape[i])
     # Compute number of bytes in last dimension, which is packed.
@@ -788,9 +784,9 @@ struct Q4_KEncoding(QuantizationEncoding):
 
     @staticmethod
     def _quantize_superblock(tensor_ptr: UnsafePointer[Float32]) -> _BlockQ4K:
-        alias nmax = 15
-        alias elems_per_subblock = _BlockQ4K.elements_per_subblock()
-        alias num_subblocks = (
+        comptime nmax = 15
+        comptime elems_per_subblock = _BlockQ4K.elements_per_subblock()
+        comptime num_subblocks = (
             _BlockQ4K.elements_per_superblock()
             // _BlockQ4K.elements_per_subblock()
         )
@@ -822,10 +818,7 @@ struct Q4_KEncoding(QuantizationEncoding):
             subblock_lsb_min = mins[subblock_idx]
             subblock_msb_iscale = 1 / scales[subblock_idx + 1]
             subblock_msb_min = mins[subblock_idx + 1]
-            constrained[
-                elems_per_subblock % simdwidthof[Float32]() == 0,
-                "subblock cannot be divided into SIMD-width units.",
-            ]()
+            comptime assert elems_per_subblock % simdwidthof[Float32]() == 0, "subblock cannot be divided into SIMD-width units."
             # Adjacent subblocks' elements are zipped together for packing in
             # memory.
             for elem_idx in range(
@@ -856,13 +849,13 @@ struct Q4_KEncoding(QuantizationEncoding):
         return _BlockQ4K(d=d, dmin=dmin, scales=quant_scales^, qs=qs^)
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the Q4_K quantized encoding."""
         return "q4_k"
 
 
-@value
-struct _BlockQ5K:
+@fieldwise_init
+struct _BlockQ5K(Copyable, Movable):
     """5-bit quantization.
 
     8 blocks of 32 elements each.
@@ -896,10 +889,7 @@ struct _BlockQ5K:
         qh: InlineArray[UInt8, QK_K // 8],
         qs: InlineArray[UInt8, QK_K // 2],
     ):
-        constrained[
-            sizeof[Self]()
-            == 2 * sizeof[Float16]() + K_SCALE_SIZE + QK_K // 2 + QK_K // 8
-        ]()
+        comptime assert sizeof[Self]() == 2 * sizeof[Float16]() + K_SCALE_SIZE + QK_K // 2 + QK_K // 8
 
         self.d = d
         self.dmin = dmin
@@ -908,17 +898,17 @@ struct _BlockQ5K:
         self.qs = qs
 
     @staticmethod
-    fn elements_per_superblock() -> Int:
+    def elements_per_superblock() -> Int:
         """Returns the number of elements per Q5_K superblock."""
         return QK_K
 
     @staticmethod
-    fn elements_per_subblock() -> Int:
+    def elements_per_subblock() -> Int:
         """Returns the number of elements per Q5_K subblock."""
         return 32
 
     @staticmethod
-    fn num_subblocks() -> Int:
+    def num_subblocks() -> Int:
         """Returns the number of subblocks per Q5_K superblock."""
         return Self.elements_per_superblock() // Self.elements_per_subblock()
 
@@ -954,9 +944,9 @@ struct Q5_KEncoding(QuantizationEncoding):
 
     @staticmethod
     def _quantize_superblock(tensor_ptr: UnsafePointer[Float32]) -> _BlockQ5K:
-        alias nmax = 31
-        alias elems_per_subblock = _BlockQ5K.elements_per_subblock()
-        alias num_subblocks = (
+        comptime nmax = 31
+        comptime elems_per_subblock = _BlockQ5K.elements_per_subblock()
+        comptime num_subblocks = (
             _BlockQ5K.elements_per_superblock()
             // _BlockQ5K.elements_per_subblock()
         )
@@ -992,11 +982,8 @@ struct Q5_KEncoding(QuantizationEncoding):
             subblock1_iscale = 1 / scales[subblock_idx + 1]
             subblock1_min = mins[subblock_idx + 1]
             qh_shift = subblock_idx // 2 * 2
-            alias width = simdwidthof[Float32]()
-            constrained[
-                elems_per_subblock % width == 0,
-                "subblock cannot be divided into SIMD-width units.",
-            ]()
+            comptime width = simdwidthof[Float32]()
+            comptime assert elems_per_subblock % width == 0, "subblock cannot be divided into SIMD-width units."
             # Adjacent subblocks' elements are zipped together for the
             # lower-bit outputs.  For the high-bit outputs, we only have two
             # bits, so can't fill a complete byte, so this is incrementally
@@ -1031,13 +1018,13 @@ struct Q5_KEncoding(QuantizationEncoding):
         return _BlockQ5K(d=d, dmin=dmin, scales=quant_scales, qh=qh^, qs=qs^)
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the Q5_K quantized encoding."""
         return "q5_k"
 
 
-@value
-struct _BlockQ6K:
+@fieldwise_init
+struct _BlockQ6K(Copyable, Movable):
     """6-bit quantization.
 
     16 blocks of 16 elements each.
@@ -1066,10 +1053,7 @@ struct _BlockQ6K:
         scales: InlineArray[Int8, QK_K // 16],
         d: Float16,
     ):
-        constrained[
-            sizeof[Self]()
-            == (3 * (QK_K // 4)) + (QK_K // 16) + sizeof[Float16]()
-        ]()
+        comptime assert sizeof[Self]() == (3 * (QK_K // 4)) + (QK_K // 16) + sizeof[Float16]()
 
         self.ql = ql
         self.qh = qh
@@ -1077,17 +1061,17 @@ struct _BlockQ6K:
         self.d = d
 
     @staticmethod
-    fn elements_per_superblock() -> Int:
+    def elements_per_superblock() -> Int:
         """Returns the number of elements per Q6_K superblock."""
         return QK_K
 
     @staticmethod
-    fn elements_per_subblock() -> Int:
+    def elements_per_subblock() -> Int:
         """Returns the number of elements per Q6_K subblock."""
         return 16
 
     @staticmethod
-    fn num_subblocks() -> Int:
+    def num_subblocks() -> Int:
         """Returns the number of subblocks per Q6_K superblock."""
         return Self.elements_per_superblock() // Self.elements_per_subblock()
 
@@ -1101,7 +1085,7 @@ def _measure_unbiased_symmetric_quant_stats[
     sum_l2 = Float32(0.0)
 
     @parameter
-    fn agg[width: Int](i: Int):
+    def agg[width: Int](i: Int):
         var x = ptr.load[width=width](i)
         var l = quants.load[width=width](i).cast[DType.float32]()
         var common = x * x * l
@@ -1143,19 +1127,16 @@ struct Q6_KEncoding(QuantizationEncoding):
 
     @staticmethod
     def _quantize_superblock(tensor_ptr: UnsafePointer[Float32]) -> _BlockQ6K:
-        alias nmax = 63
-        alias elems_per_subblock = _BlockQ6K.elements_per_subblock()
-        alias num_subblocks = (
+        comptime nmax = 63
+        comptime elems_per_subblock = _BlockQ6K.elements_per_subblock()
+        comptime num_subblocks = (
             _BlockQ6K.elements_per_superblock()
             // _BlockQ6K.elements_per_subblock()
         )
         # In a few places we'd like to use num_subblocks, but Mojo rejects it
         # due to a parameter mismatch (even though the _values_ are the same),
         # so constrain here and hard-code where we have to.
-        constrained[
-            num_subblocks == QK_K // 16,
-            "hard-coded num_subblocks does not match computed value",
-        ]()
+        comptime assert num_subblocks == QK_K // 16, "hard-coded num_subblocks does not match computed value"
 
         # First compute subblock statistics.
         scales = InlineArray[Float32, QK_K // 16](uninitialized=True)
@@ -1181,11 +1162,8 @@ struct Q6_KEncoding(QuantizationEncoding):
                     1 / scales[outer_subblock_idx + inner_subblock_idx + 4],
                     1 / scales[outer_subblock_idx + inner_subblock_idx + 6],
                 )
-                alias width = simdwidthof[Float32]()
-                constrained[
-                    elems_per_subblock % width == 0,
-                    "subblock cannot be divided into SIMD-width units.",
-                ]()
+                comptime width = simdwidthof[Float32]()
+                comptime assert elems_per_subblock % width == 0, "subblock cannot be divided into SIMD-width units."
                 for elem_idx in range(0, elems_per_subblock, width):
                     subblock_quants = InlineArray[SIMD[DType.uint8, width], 4](
                         uninitialized=True
@@ -1228,7 +1206,7 @@ struct Q6_KEncoding(QuantizationEncoding):
     def _pick_subblock_scale[
         *, count: Int, nmax: Int
     ](ptr: UnsafePointer[Float32]) -> Float32:
-        alias nmax_signed_min = -(nmax + 1) // 2
+        comptime nmax_signed_min = -(nmax + 1) // 2
         amax, amax_nonabs = _find_amax[count](ptr)
         # Make a first guess at a quantization scale.
         iscale = nmax_signed_min / amax_nonabs
@@ -1278,6 +1256,6 @@ struct Q6_KEncoding(QuantizationEncoding):
         return (d, scale_quants)
 
     @staticmethod
-    fn id() -> String:
+    def id() -> String:
         """Identifier for the Q6_K quantized encoding."""
         return "q6_k"

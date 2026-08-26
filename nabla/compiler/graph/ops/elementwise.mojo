@@ -74,11 +74,12 @@ Given two input tensor shapes, broadcasting works as following:
 3. All other dimensions will be asserted to be equivalent. If they are not, an exception will be raised.
 """
 
-from collections import Optional
-from collections.string.string_slice import StaticString
+from std.collections import Optional
+from std.collections.string import StaticString
 
-from builtin._location import __call_location, _SourceLocation
+from .._loc import __call_location, _SourceLocation
 
+from ..symbol import Symbol
 from ..error import error
 
 # ===----------------------------------------------------------------------=== #
@@ -87,17 +88,17 @@ from ..error import error
 # Note: Keep alphabetized.
 
 
-def _binary_op[op_name: StaticString](lhs: Symbol, rhs: Symbol) -> Symbol:
+def _binary_op[op_name: StaticString](lhs: Symbol, rhs: Symbol) raises -> Symbol:
     return lhs.graph().op(
         String(op_name),
-        List[Symbol](lhs, rhs),
+        [lhs, rhs],
     )
 
 
 @always_inline
 def add(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Adds two symbolic tensors.
 
     Creates a new op node to compute the addition of two symbol tensor values
@@ -135,7 +136,7 @@ def add(
 @always_inline
 def div(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Divides two symbolic tensors.
 
     Creates a new op node to compute the division of two symbol tensor values
@@ -287,7 +288,7 @@ def mod(
 @always_inline
 def mul(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Computes the elementwise multiplication of two symbolic tensors.
 
     Creates a new op node to compute the multiplication of two symbol tensor values
@@ -325,7 +326,7 @@ def mul(
 @always_inline
 def pow(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Computes the elementwise exponentiation of two symbolic tensors.
 
     Creates a new op node to compute the exponentiation of two symbol tensor values
@@ -363,7 +364,7 @@ def pow(
 @always_inline
 def sub(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Computes the elementwise subtraction of two symbolic tensors.
 
     Creates a new op node to compute the subtraction of two symbol tensor values
@@ -401,7 +402,7 @@ def sub(
 @always_inline
 def equal(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Computes the elementwise equality comparison between two symbolic tensors.
 
     Creates a new op node to compute the equality comparison of two symbol
@@ -442,7 +443,7 @@ def equal(
 @always_inline
 def greater(
     lhs: Symbol, rhs: Symbol, location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Computes the elementwise greater than comparison between two symbolic tensors.
 
     Creates a new op node to compute the greater than comparison of two symbol
@@ -561,7 +562,7 @@ def not_equal(
     return _op_impl["rmo.not_equal"](lhs, rhs, location, __call_location())
 
 
-fn _op_impl[
+def _op_impl[
     op_name: StaticString
 ](
     lhs: Symbol,
@@ -581,11 +582,11 @@ fn _op_impl[
 # Note: Keep alphabetized.
 
 
-def _unary_op[op_name: StaticString](value: Symbol) -> Symbol:
+def _unary_op[op_name: StaticString](value: Symbol) raises -> Symbol:
     return value.graph().op(String(op_name), value, value.tensor_type())
 
 
-def _unary_float_op[op_name: StaticString](value: Symbol) -> Symbol:
+def _unary_float_op[op_name: StaticString](value: Symbol) raises -> Symbol:
     var dtype = value.tensor_type().dtype
     if not dtype.is_floating_point():
         raise error(
@@ -694,7 +695,7 @@ def gelu(value: Symbol) -> Symbol:
     return _unary_op["rmo.mo.gelu"](value)
 
 
-def log(value: Symbol) -> Symbol:
+def log(value: Symbol) raises -> Symbol:
     """Computes the elementwise natural logarithm of a symbolic tensor.
 
     Creates a new op node to compute the elementwise natural logarithm of a
@@ -771,7 +772,7 @@ def logsoftmax(value: Symbol) -> Symbol:
     return _unary_op["rmo.mo.logsoftmax"](value)
 
 
-def relu(value: Symbol) -> Symbol:
+def relu(value: Symbol) raises -> Symbol:
     """Computes the elementwise relu of a symbolic tensor.
 
     Creates a new op node to compute the elementwise relu of a
@@ -853,7 +854,7 @@ def softmax(value: Symbol) -> Symbol:
     return _unary_op["rmo.mo.softmax"](value)
 
 
-def cos(value: Symbol) -> Symbol:
+def cos(value: Symbol) raises -> Symbol:
     """Computes the elementwise cosine of a symbolic tensor.
 
     Creates a new op node to compute the elementwise cosine of a
@@ -953,7 +954,7 @@ def sqrt(value: Symbol) -> Symbol:
     return _unary_float_op["rmo.mo.sqrt"](value)
 
 
-def sin(value: Symbol) -> Symbol:
+def sin(value: Symbol) raises -> Symbol:
     """Computes the elementwise sine of a symbolic tensor.
 
     Creates a new op node to compute the elementwise sine of a

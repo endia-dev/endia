@@ -12,12 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 """Ops that create lists."""
 
-from collections import List, Optional
+from std.collections import List, Optional
 
 from ..error import error
 
 
-fn list(elements: List[Symbol]) raises -> Symbol:
+def list(elements: List[Symbol]) raises -> Symbol:
     """Creates a new list and fills it with elements.
 
     This uses the `mo.list.create` operation. The elements must have the same
@@ -53,7 +53,7 @@ fn list(elements: List[Symbol]) raises -> Symbol:
     return g.op("mo.list.create", elements, ListType(type))
 
 
-fn list(type: TensorType, g: Graph) raises -> Symbol:
+def list(type: TensorType, g: Graph) raises -> Symbol:
     """Creates a new empty list of `TensorType` elements.
 
     This uses the `mo.list.create` operation.

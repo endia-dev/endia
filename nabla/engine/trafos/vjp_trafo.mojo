@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from memory import ArcPointer
-from utils import Variant
+from std.memory import ArcPointer
+from std.utils import Variant
 from nabla.api.array import Array
 from nabla.core.device_array import DeviceArray, zeros_like
 from nabla.api.array import ones
@@ -25,7 +25,7 @@ from nabla.engine.utils import (
 )
 
 
-fn compute_cotangent(
+def compute_cotangent(
     mut array: DeviceArray, mut cotangents: List[DeviceArray]
 ) raises -> None:
     if not array.impl[]._vjp:
@@ -34,7 +34,7 @@ fn compute_cotangent(
 
     var primals = List[DeviceArray]()
     for arg in array.args():
-        primals.append(arg[])
+        primals.append(arg)
 
     if len(array.impl[].cotangent) == 0:
         raise "DeviceArray has no cotangent, id = " + String(
@@ -53,7 +53,7 @@ fn compute_cotangent(
                     primal.impl[].cotangent[0]
                 )
 
-            primal.impl[].cotangent = List(primal_cotangent.impl)
+            primal.impl[].cotangent = [primal_cotangent.impl]
 
     for j in range(len(primals)):
         var primal = primals[j]
@@ -61,13 +61,13 @@ fn compute_cotangent(
             cotangents.append(primal.cotangent())
 
 
-fn cotangent(
+def cotangent(
     outs: List[DeviceArray], keep_graph: Bool = True
 ) raises -> List[DeviceArray]:
     var trace = List[DeviceArray]()
 
     for output in outs:
-        var parent = output[]
+        var parent = output
         get_full_trace_recursively(trace, parent)
 
     var cotangents = List[DeviceArray]()
@@ -87,46 +87,46 @@ fn cotangent(
         array.impl[].cotangent.clear()
 
     if not keep_graph:
-        for cotangent in cotangents:
-            cotangent[].requires_pullback_(False)
+        for ref cotangent in cotangents:
+            cotangent.requires_pullback_(False)
 
-    return cotangents
-
-
-fn reset_visited(mut trace: List[DeviceArray]) raises -> None:
-    for array in trace:
-        array[].visited_(False)
+    return cotangents^
 
 
-fn cotangent_with_remat(
+def reset_visited(mut trace: List[DeviceArray]) raises -> None:
+    for ref array in trace:
+        array.visited_(False)
+
+
+def cotangent_with_remat(
     outs: List[DeviceArray], keep_graph: Bool = True
 ) raises -> List[DeviceArray]:
     var trace = List[DeviceArray]()
 
     for output in outs:
-        var parent = output[]
+        var parent = output
         get_full_trace_recursively(trace, parent)
 
     reset_visited(trace)
 
-    for array in trace:
+    for ref array in trace:
         if (
-            not array[].impl[].is_checkpoint
-            and (not array[].impl[].requires_pullback)
-            and array[].impl[]._diffable
-            and (not array[].is_tmp_output())
+            not array.impl[].is_checkpoint
+            and (not array.impl[].requires_pullback)
+            and array.impl[]._diffable
+            and (not array.is_tmp_output())
         ):
-            var dual_args = array[].args()
+            var dual_args = array.args()
 
-            for i in range(len(dual_args)):
+            for ref i in range(len(dual_args)):
                 var arg = dual_args[i]
                 if len(arg.impl[]._dual) == 1:
                     dual_args[i] = arg.dual()
 
-            var dual = DeviceArray(ArcPointer(array[].impl[]))
-            dual.name_("dual_" + array[].impl[].name)
+            var dual = DeviceArray(ArcPointer(array.impl[].copy()))
+            dual.name_("dual_" + array.impl[].name)
             dual.args_(dual_args)
-            array[].dual_(dual)
+            array.dual_(dual)
 
     var cotangents = List[DeviceArray]()
 
@@ -147,57 +147,57 @@ fn cotangent_with_remat(
                 len(p_array.impl[].cotangent) == 1
                 and len(array.impl[].cotangent) == 0
             ):
-                array.impl[].cotangent = p_array.impl[].cotangent
+                array.impl[].cotangent = p_array.impl[].cotangent.copy()
 
         compute_cotangent(array, cotangents)
         array.impl[].cotangent.clear()
         p_array.impl[].cotangent.clear()
 
     for array in trace:
-        array[].impl[]._dual.clear()
+        array.impl[]._dual.clear()
 
     if not keep_graph:
-        for cotangent in cotangents:
-            cotangent[].requires_pullback_(False)
+        for ref cotangent in cotangents:
+            cotangent.requires_pullback_(False)
 
-    return cotangents
+    return cotangents^
 
 
-fn vjp_call(
+def vjp_call(
     meta: TrafoMeta,
     args: List[Array],
 ) raises -> List[Array]:
     var num_primals = meta["num_primals"][0]
-    var primals = args[:num_primals]
-    for primal in primals:
-        primal[].requires_pullback_(True)
-    return primals
+    var primals = List(args[:num_primals])
+    for ref primal in primals:
+        primal.requires_pullback_(True)
+    return primals^
 
 
-fn vjp_end_rule(
+def vjp_end_rule(
     mut args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
     var outputs = List[DeviceArray]()
     var num_primals = meta["num_primals"][0]
-    var primals = args[:num_primals]
-    var tangents = args[num_primals:]
+    var primals = List(args[:num_primals])
+    var tangents = List(args[num_primals:])
 
-    for primal in primals:
-        primal[].requires_pullback_(True)
+    for ref primal in primals:
+        primal.requires_pullback_(True)
 
     if len(tangents) != len(res):
-        raise "Error in vjp_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + len(
+        raise "Error in vjp_end_rule: Number of tangents does not match the number of outputs. len(tangents) = " + String(len(
             tangents
-        ).__str__() + " vs. len(res) = " + len(
+        )) + " vs. len(res) = " + String(len(
             res
-        ).__str__()
+        ))
 
     for i in range(len(res)):
         var device_array = res[i].device_array
         var tangent = tangents[i].device_array
-        device_array[].impl[].cotangent = List(tangent[].impl)
+        device_array[].impl[].cotangent = [tangent[].impl]
         outputs.append(device_array[])
 
     if len(meta["with_remat"]) == 0:
@@ -207,16 +207,16 @@ fn vjp_end_rule(
     _ = cotangent_with_remat(outputs) if remat else cotangent(outputs)
     var cotangents = List[Array]()
     for primal in primals:
-        cotangents.append(primal[].cotangent())
+        cotangents.append(primal.cotangent())
 
-    for array in primals:
-        array[].device_array[].impl[].cotangent.clear()
-        array[].requires_pullback_(False)
+    for ref array in primals:
+        array.device_array[].impl[].cotangent.clear()
+        array.requires_pullback_(False)
 
-    return cotangents
+    return cotangents^
 
 
-fn backward(
+def backward(
     array: DeviceArray, remat: Bool = False, keep_graph: Bool = False
 ) raises -> None:
     if len(array.impl[].shape) != 1 and array.impl[].shape[0] != 1:
@@ -229,9 +229,9 @@ fn backward(
         requires_grad=False,
         execution_context=execution_context,
     )
-    array.impl[].cotangent = List(tangent.device_array[].impl)
+    array.impl[].cotangent = [tangent.device_array[].impl]
 
     if remat:
-        _ = cotangent_with_remat(List(array), keep_graph)
+        _ = cotangent_with_remat([array], keep_graph)
     else:
-        _ = cotangent(List(array), keep_graph)
+        _ = cotangent([array], keep_graph)

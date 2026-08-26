@@ -14,26 +14,26 @@
 all tensors.
 """
 
-import os
-from collections import InlineArray
-from os import PathLike
-from pathlib import Path
-from sys import sizeof
+import std.os as os
+from std.collections import InlineArray
+from std.os import PathLike
+from std.pathlib import Path
+from std.sys import sizeof
 
 from nabla.compiler.tensor import Tensor
 
 # 0x93 🔥 + + 0x93
-alias _SERIALIZATION_HEADER = InlineArray[Int8, 8](
+comptime _SERIALIZATION_HEADER = InlineArray[Int8, 8](
     0x93, 0xF0, 0x9F, 0x94, 0xA5, 0x2B, 0x2B, 0x93
 )
 
 # Serialization constants
-alias _SERIALIZATION_MAJOR_FORMAT: UInt32 = 0
-alias _SERIALIZATION_MINOR_FORMAT: UInt32 = 1
+comptime _SERIALIZATION_MAJOR_FORMAT: UInt32 = 0
+comptime _SERIALIZATION_MINOR_FORMAT: UInt32 = 1
 
 
-@value
-struct VersionInfo(Writable):
+@fieldwise_init
+struct VersionInfo(Copyable, Movable, Writable):
     """Struct containing major and minor version values.
 
     The MAX checkpoint format guarantees backwards compatibility, meaning that
@@ -47,10 +47,10 @@ struct VersionInfo(Writable):
     var major_version: UInt32
     var minor_version: UInt32
 
-    fn __str__(self) -> String:
-        return String.write(self)
+    def __str__(self) -> String:
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         writer.write(self.major_version, ".", self.minor_version)
 
 
@@ -104,7 +104,7 @@ def _read_version[
 
 
 @always_inline
-fn _read_int[type: DType](f: FileHandle) raises -> Scalar[type]:
+def _read_int[type: DType](f: FileHandle) raises -> Scalar[type]:
     """Reads an int value from a file."""
     var size = sizeof[type]()
     var bytes_tensor = Tensor[DType.uint8](f.read_bytes(size))

@@ -12,32 +12,31 @@
 # ===----------------------------------------------------------------------=== #
 """ShapeElement API.  See ShapeElement struct definition for details."""
 
-from collections.string import StringSlice
-from os import abort
+from std.collections.string import StringSlice
+from std.os import abort
 
 
-@value
-@register_passable
-struct _ShapeElementType(EqualityComparable):
+@fieldwise_init
+struct _ShapeElementType(RegisterPassable, ImplicitlyCopyable, Equatable):
     """Type of a shape element."""
 
     var _value: UInt8
 
-    alias STATIC = _ShapeElementType(0)
-    alias UNNAMED_DYNAMIC = _ShapeElementType(1)
-    alias NAMED_DYNAMIC = _ShapeElementType(2)
+    comptime STATIC = _ShapeElementType(0)
+    comptime UNNAMED_DYNAMIC = _ShapeElementType(1)
+    comptime NAMED_DYNAMIC = _ShapeElementType(2)
 
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    fn __ne__(self, other: Self) -> Bool:
+    def __ne__(self, other: Self) -> Bool:
         return not (self == other)
 
 
 # N.B.: We do not use @value since that would expose a constructor that takes
 # _type, _static, and _name directly, while we want to keep this representation
 # hidden.
-struct ShapeElement(Copyable, Movable, EqualityComparable):
+struct ShapeElement(Copyable, Movable, Equatable):
     """A single dimension of a possibly-dynamic shape.
 
     A shape element can be static or dynamic.  If dynamic, it can be named or
@@ -50,7 +49,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
     var _name: String
 
     @implicit
-    fn __init__(out self, static: Int):
+    def __init__(out self, static: Int):
         """Create a static shape element with the given static dimension value.
 
         Args:
@@ -59,7 +58,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self = Self(Int64(static))
 
     @implicit
-    fn __init__(out self, static: Int64):
+    def __init__(out self, static: Int64):
         """Create a static shape element with the given static dimension value.
 
         Args:
@@ -73,7 +72,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
     #   This initializer should not be necessary, we should need
     #   only the initilaizer from a `NoneType`.
     @implicit
-    fn __init__(out self, unnamed: NoneType._mlir_type):
+    def __init__(out self, unnamed: NoneType._mlir_type):
         """Create an unnamed dynamic shape element.
 
         Args:
@@ -82,7 +81,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self = Self(NoneType(unnamed))
 
     @implicit
-    fn __init__(out self, unnamed: NoneType):
+    def __init__(out self, unnamed: NoneType):
         """Create an unnamed dynamic shape element.
 
         Args:
@@ -93,7 +92,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self._name = String()
 
     @implicit
-    fn __init__(out self, owned name: String):
+    def __init__(out self, var name: String):
         """Create a dynamic shape element with the given name.
 
         Args:
@@ -107,7 +106,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self._name = name^
 
     @implicit
-    fn __init__(out self, name: StringSlice):
+    def __init__(out self, name: StringSlice):
         """Create a dynamic shape element with the given name.
 
         Args:
@@ -119,7 +118,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self = Self(String(name))
 
     @implicit
-    fn __init__(out self, name: StringLiteral):
+    def __init__(out self, name: StringLiteral):
         """Create a dynamic shape element with the given name.
 
         Args:
@@ -130,8 +129,8 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         """
         self = Self(String(name))
 
-    fn __moveinit__(out self, owned other: Self):
-        """Initialize from another owned ShapeElement.
+    def __moveinit__(out self, var other: Self):
+        """Initialize from another var ShapeElement.
 
         Args:
             other: The ShapeElement to copy from.
@@ -140,7 +139,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self._static = other._static
         self._name = other._name^
 
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         """Create a copy of another ShapeElement.
 
         Args:
@@ -151,15 +150,12 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         self._name = other._name
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         """Determine if this shape element is equal to another.
 
         Note that this is structural, not necessarily semantic -- two unnamed
@@ -179,9 +175,9 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
             return True
         if self.is_named_dynamic():
             return self._name == other._name
-        return abort[Bool]("unhandled type case in ShapeElement.__eq__")
+        abort("unhandled type case in ShapeElement.__eq__")
 
-    fn __ne__(self, other: Self) -> Bool:
+    def __ne__(self, other: Self) -> Bool:
         """Determine if this shape element is unequal to another.
 
         Note that this is structural, not necessarily semantic -- two unnamed
@@ -196,14 +192,14 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         return not (self == other)
 
     # TODO: These should be '@property' once Mojo supports that.
-    fn is_static(self) -> Bool:
+    def is_static(self) -> Bool:
         """Whether this shape element is static.
 
         Returns: True if this shape element is static; False otherwise.
         """
         return self._type == _ShapeElementType.STATIC
 
-    fn is_dynamic(self) -> Bool:
+    def is_dynamic(self) -> Bool:
         """Whether this shape element is a dynamic dimension.
 
         Returns:
@@ -211,7 +207,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         """
         return self.is_unnamed_dynamic() or self.is_named_dynamic()
 
-    fn is_unnamed_dynamic(self) -> Bool:
+    def is_unnamed_dynamic(self) -> Bool:
         """Whether this shape element is an unnamed dynamic dimension.
 
         Returns:
@@ -220,7 +216,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         """
         return self._type == _ShapeElementType.UNNAMED_DYNAMIC
 
-    fn is_named_dynamic(self) -> Bool:
+    def is_named_dynamic(self) -> Bool:
         """Whether this shape element is a named dynamic dimension.
 
         Returns:
@@ -229,7 +225,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
         """
         return self._type == _ShapeElementType.NAMED_DYNAMIC
 
-    fn static_value(self) -> Int64:
+    def static_value(self) -> Int64:
         """Return size of this static shape element.
 
         Returns:
@@ -242,7 +238,7 @@ struct ShapeElement(Copyable, Movable, EqualityComparable):
 
     # N.B.: Returns a String rather than a StringRef for safety.  When Mojo
     # supports richer origins, we could return a StringRef instead.
-    fn name(self) -> String:
+    def name(self) -> String:
         """Return name of this named dynamic shape element.
 
         Returns:

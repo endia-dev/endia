@@ -12,12 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 """Symbolic value primitives."""
 
-from collections.optional import Optional
+from std.collections.optional import Optional
 
 import _mlir
-from builtin._location import __call_location, _SourceLocation
+from ._loc import __call_location, _SourceLocation
 
-from utils.variant import Variant
+from std.utils.variant import Variant
 
 from ._attributes import _string_attr
 from .error import error, format_error
@@ -34,15 +34,15 @@ from .ops import add, div, matmul, mul, pow, reshape, sub, transpose
 # Symbol implementing it, along with a few adapters, e.g. ReifiableInt, so that
 # we can then implement operators like e.g.
 #
-#     fn __add__[T: Reifiable](self, rhs: T) raises -> Symbol:
+#     def __add__[T: Reifiable](self, rhs: T) raises -> Symbol:
 #         var g = self.graph()
 #         return add(self, rhs.to_symbol(g, self.tensor_type()))
 #
 # Alas that falls on its face for some reason. Bug?
 
 
-@value
-struct Symbol(Copyable, Movable, Stringable, Writable):
+@fieldwise_init
+struct Symbol(Copyable, ImplicitlyCopyable, Movable, Writable):
     """Represents a symbolic value within a `Graph`.
 
     A `Symbol` can represent the output of a node, the arguments of a `Graph`
@@ -71,7 +71,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     # Constructors and basic accessors
     # ===------------------------------------------------------------------=== #
 
-    fn graph(self) -> Graph:
+    def graph(self) -> Graph:
         """Returns the `Graph` owning this `Symbol`.
 
         Returns:
@@ -79,7 +79,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return Graph(self._graph)
 
-    fn type(self) raises -> Type:
+    def type(self) raises -> Type:
         """Returns this `Symbol`'s type.
 
         Returns:
@@ -87,7 +87,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return Type.from_mlir(self.handle.type())
 
-    fn tensor_type(self) raises -> TensorType:
+    def tensor_type(self) raises -> TensorType:
         """Returns this `Symbol`'s type, as `TensorType`.
 
         Implicitly asserts that the type is indeed `TensorType`, and raises an
@@ -98,7 +98,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return self.type().tensor()
 
-    fn shape(self) raises -> List[Dim]:
+    def shape(self) raises -> List[Dim]:
         """Returns this `Symbol`'s tensor shape, as `List[Dim]`.
 
         Implicitly asserts that the type is indeed `TensorType`, and raises an
@@ -109,7 +109,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return self.type().tensor().dims
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Returns a `String` representation of this `Symbol`.
 
         The representation uses an internal MLIR Assembly format, and typically
@@ -120,9 +120,9 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         Returns:
             A textual representation of this `Symbol`.
         """
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats this symbol to the provided Writer.
 
@@ -140,15 +140,15 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    fn rebind(self, *dims: Dim) raises -> Symbol:
+    def rebind(self, *dims: Dim) raises -> Symbol:
         return self._rebind_impl(dims, __call_location())
 
-    fn _rebind_impl(
-        self, dims: VariadicListMem[Dim, *_], call_loc: _SourceLocation
+    def _rebind_impl(
+        self, dims: List[Dim], call_loc: _SourceLocation
     ) raises -> Symbol:
         var out_dims = List[Dim]()
         for dim in dims:
-            out_dims.append(dim[])
+            out_dims.append(dim)
 
         var message = format_error(
             self.graph(),
@@ -158,20 +158,20 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return ops.rebind(self, out_dims, message)
 
     @always_inline
-    fn rebind(self, dims: List[Dim]) raises -> Symbol:
+    def rebind(self, dims: List[Dim]) raises -> Symbol:
         return self._rebind_impl(dims, __call_location())
 
-    fn _rebind_impl(
+    def _rebind_impl(
         self, dims: List[Dim], call_loc: _SourceLocation
     ) raises -> Symbol:
         var message = format_error(
             self.graph(),
             "failed to rebind runtime shape",
-            call_loc,
+            location=call_loc,
         )
         return ops.rebind(self, dims, message)
 
-    fn reshape(self) raises -> Symbol:
+    def reshape(self) raises -> Symbol:
         return ops.reshape(
             self,
             self.graph().vector[DType.int64](List[Int64]()),
@@ -181,7 +181,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     # TODO(GEX-578): Once reshape with Variant[Symbol, Int] is removed, we can also remove this.
     # Will only need Variant[Dim, Int].
     @always_inline
-    fn reshape(self, *dims: Int) raises -> Symbol:
+    def reshape(self, *dims: Int) raises -> Symbol:
         """Reshapes this `Symbol`.
 
         Uses the `mo.reshape` op. Requires the symbol to be a `TensorType`.
@@ -192,12 +192,15 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         Returns:
             A new `Symbol` that has the given shape.
         """
-        return self._reshape_impl(dims, __call_location())
+        var dim_list = List[Int]()
+        for d in dims:
+            dim_list.append(d)
+        return self._reshape_impl(dim_list, __call_location())
 
     # TODO(GEX-578): Once reshape with Variant[Symbol, Int] is removed, we can also remove this.
     # Will only need Variant[Dim, Int].
-    fn _reshape_impl(
-        self, dims: VariadicList[Int], call_loc: _SourceLocation
+    def _reshape_impl(
+        self, dims: List[Int], call_loc: _SourceLocation
     ) raises -> Symbol:
         if len(dims) == 0:
             return self.reshape()
@@ -212,7 +215,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
             raise error(self.graph(), e, location=call_loc)
 
     @always_inline
-    fn reshape(self, *dims: Dim) raises -> Symbol:
+    def reshape(self, *dims: Dim) raises -> Symbol:
         """Reshapes this `Symbol`.
 
         Uses the `mo.reshape` op. Requires the symbol to be a `TensorType`.
@@ -223,24 +226,27 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         Returns:
             A new `Symbol` that has the given shape.
         """
-        return self._reshape_impl(dims, __call_location())
+        var dim_list = List[Dim]()
+        for d in dims:
+            dim_list.append(d.copy())
+        return self._reshape_impl(dim_list, __call_location())
 
-    fn _reshape_impl(
-        self, dims: VariadicListMem[Dim, *_], call_loc: _SourceLocation
+    def _reshape_impl(
+        self, dims: List[Dim], call_loc: _SourceLocation
     ) raises -> Symbol:
         if len(dims) == 0:
             return self.reshape()
 
         var shape = List[Dim]()
         for dim in dims:
-            shape.append(dim[])
+            shape.append(dim.copy())
 
         try:
             return ops.reshape(self, shape)
         except e:
             raise error(self.graph(), e, location=call_loc)
 
-    fn reshape(self, *dims: Variant[Symbol, Int]) raises -> Symbol:
+    def reshape(self, *dims: Variant[Symbol, Int]) raises -> Symbol:
         """Reshapes this `Symbol`.
 
         Uses the `mo.reshape` op. Requires the symbol to be a `TensorType`.
@@ -258,17 +264,17 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         var symbolic_dims = List[Symbol]()
 
         for dim in dims:
-            if dim[].isa[Symbol]():
+            if dim.isa[Symbol]():
                 static_shape.append(Dim.dynamic())
-                symbolic_dims.append(dim[][Symbol])
+                symbolic_dims.append(dim[Symbol])
             else:
-                var d = dim[][Int]
+                var d = dim[Int]
                 static_shape.append(d if d >= 0 else Dim.dynamic())
-                symbolic_dims.append(self.graph().scalar[DType.int64](d))
+                symbolic_dims.append(self.graph().scalar[DType.int64](Int64(d)))
 
         return ops.reshape(self, ops.stack(symbolic_dims), static_shape)
 
-    fn swapaxes(self, axis1: Int, axis2: Int) raises -> Symbol:
+    def swapaxes(self, axis1: Int, axis2: Int) raises -> Symbol:
         """Interchanges two axes of this `Symbol`.
 
         Uses the `mo.transpose` op. Negative values are allowed, and represent
@@ -284,7 +290,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return transpose(self, axis1, axis2)
 
     @always_inline
-    fn broadcast_to(self, *dims: Dim) raises -> Symbol:
+    def broadcast_to(self, *dims: Dim) raises -> Symbol:
         """Broadcasts this `Symbol` to the specified dims.
 
         Uses the `mo.broadcast_to` op. Requires the symbol to be a `TensorType`.
@@ -297,12 +303,12 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         var shape = List[Dim]()
         for dim in dims:
-            shape.append(dim[])
+            shape.append(dim)
 
         return self.broadcast_to(shape, __call_location())
 
     @always_inline
-    fn broadcast_to(
+    def broadcast_to(
         self, shape: List[Dim], location: Optional[_SourceLocation] = None
     ) raises -> Symbol:
         """Broadcasts this `Symbol` to the specified shape.
@@ -324,7 +330,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    fn __getitem__(
+    def __getitem__(
         self, i: Variant[Symbol, Int], axis: Int = 0, keep_dims: Bool = False
     ) raises -> Symbol:
         """Symbolic slicing - indexes a value by a single index.
@@ -341,7 +347,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return self._getitem_impl(i, axis, keep_dims, __call_location())
 
-    fn _getitem_impl(
+    def _getitem_impl(
         self,
         i: Variant[Symbol, Int],
         axis: Int,
@@ -364,7 +370,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return ops.slice(self, index_sym, axis, keep_dims)
 
     @always_inline
-    fn __getitem__(
+    def __getitem__(
         self, *s: SymbolicSlice, out_dims: List[Dim]
     ) raises -> Symbol:
         """Range-based slicing.
@@ -383,7 +389,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return self._getitem_impl(s, out_dims, __call_location())
 
-    fn _getitem_impl(
+    def _getitem_impl(
         self,
         s: VariadicListMem[SymbolicSlice, *_],
         out_dims: List[Dim],
@@ -391,11 +397,11 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     ) raises -> Symbol:
         var slices = List[SymbolicSlice]()
         for sval in s:
-            slices.append(sval[])
+            slices.append(sval)
         return ops.slice(self, slices, out_dims, call_loc)
 
     @always_inline
-    fn __getitem__(
+    def __getitem__(
         self, *slices: Slice, out_dims: List[Dim] = List[Dim]()
     ) raises -> Symbol:
         """Shorthand for symbolic slicing with `Int` ranges.
@@ -415,7 +421,10 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         Raises:
             An exception if out_dims is empty and can't be calculated at graph build time.
         """
-        return ops.slice(self, slices, out_dims, __call_location())
+        var slice_list = List[Slice]()
+        for s in slices:
+            slice_list.append(s)
+        return ops.slice(self, slice_list, out_dims, __call_location())
 
     # ===------------------------------------------------------------------=== #
     # Arithmetic operators
@@ -423,14 +432,14 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
 
     # Note: Keep in alphabetic order.
 
-    fn _consistent_scalar(self, value: Int) raises -> Symbol:
+    def _consistent_scalar(self, value: Int) raises -> Symbol:
         return self.graph().scalar(value, self.type().tensor().dtype)
 
-    fn _consistent_scalar(self, value: Float64) raises -> Symbol:
+    def _consistent_scalar(self, value: Float64) raises -> Symbol:
         return self.graph().scalar(value, self.type().tensor().dtype)
 
     @always_inline
-    fn __add__(self, rhs: Symbol) raises -> Symbol:
+    def __add__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise addition.
 
         Args:
@@ -442,7 +451,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(self, rhs, __call_location())
 
     @always_inline
-    fn __add__(self, rhs: Int) raises -> Symbol:
+    def __add__(self, rhs: Int) raises -> Symbol:
         """Element-wise addition by an `Int` literal.
 
         Args:
@@ -454,7 +463,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __add__(self, rhs: Float64) raises -> Symbol:
+    def __add__(self, rhs: Float64) raises -> Symbol:
         """Element-wise addition by a `Float64`.
 
         Args:
@@ -466,7 +475,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __matmul__(self, rhs: Symbol) raises -> Symbol:
+    def __matmul__(self, rhs: Symbol) raises -> Symbol:
         """Matrix multiplication.
 
         Args:
@@ -478,7 +487,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return matmul(self, rhs, __call_location())
 
     @always_inline
-    fn __mul__(self, rhs: Symbol) raises -> Symbol:
+    def __mul__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise multiplication.
 
         Args:
@@ -490,7 +499,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return mul(self, rhs, __call_location())
 
     @always_inline
-    fn __mul__(self, rhs: Int) raises -> Symbol:
+    def __mul__(self, rhs: Int) raises -> Symbol:
         """Element-wise multiplication by an `Int` literal.
 
         Args:
@@ -502,7 +511,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return mul(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __mul__(self, rhs: Float64) raises -> Symbol:
+    def __mul__(self, rhs: Float64) raises -> Symbol:
         """Element-wise multiplication by a `Float64`.
 
         Args:
@@ -513,7 +522,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         """
         return mul(self, self._consistent_scalar(rhs), __call_location())
 
-    fn __neg__(self) raises -> Symbol:
+    def __neg__(self) raises -> Symbol:
         """Numerical negative, element-wise.
 
         Returns:
@@ -522,7 +531,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return self.graph().op("rmo.mo.negative", self, self.tensor_type())
 
     @always_inline
-    fn __pow__(self, rhs: Symbol) raises -> Symbol:
+    def __pow__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise raise to power.
 
         Args:
@@ -534,7 +543,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(self, rhs, __call_location())
 
     @always_inline
-    fn __pow__(self, rhs: Int) raises -> Symbol:
+    def __pow__(self, rhs: Int) raises -> Symbol:
         """Element-wise raise to power by an `Int` literal.
 
         Args:
@@ -546,7 +555,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __pow__(self, rhs: Float64) raises -> Symbol:
+    def __pow__(self, rhs: Float64) raises -> Symbol:
         """Element-wise raise to power by a `Float64`.
 
         Args:
@@ -558,7 +567,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __radd__(self, rhs: Symbol) raises -> Symbol:
+    def __radd__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise addition.
 
         Args:
@@ -570,7 +579,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(rhs, self, __call_location())
 
     @always_inline
-    fn __radd__(self, rhs: Int) raises -> Symbol:
+    def __radd__(self, rhs: Int) raises -> Symbol:
         """Element-wise addition by an `Int` literal.
 
         Args:
@@ -582,7 +591,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __radd__(self, rhs: Float64) raises -> Symbol:
+    def __radd__(self, rhs: Float64) raises -> Symbol:
         """Element-wise addition by a `Float64`.
 
         Args:
@@ -594,7 +603,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return add(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rmul__(self, rhs: Symbol) raises -> Symbol:
+    def __rmul__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise multiplication.
 
         Args:
@@ -606,7 +615,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return mul(rhs, self, __call_location())
 
     @always_inline
-    fn __rmul__(self, rhs: Int) raises -> Symbol:
+    def __rmul__(self, rhs: Int) raises -> Symbol:
         """Element-wise multiplication by an `Int` literal.
 
         Args:
@@ -618,7 +627,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return mul(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rmul__(self, rhs: Float64) raises -> Symbol:
+    def __rmul__(self, rhs: Float64) raises -> Symbol:
         """Element-wise multiplication by a `Float64`.
 
         Args:
@@ -630,7 +639,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return mul(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rpow__(self, rhs: Symbol) raises -> Symbol:
+    def __rpow__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise raise to power.
 
         Args:
@@ -642,7 +651,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(rhs, self, __call_location())
 
     @always_inline
-    fn __rpow__(self, rhs: Int) raises -> Symbol:
+    def __rpow__(self, rhs: Int) raises -> Symbol:
         """Element-wise raise to power by an `Int` literal.
 
         Args:
@@ -654,7 +663,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rpow__(self, rhs: Float64) raises -> Symbol:
+    def __rpow__(self, rhs: Float64) raises -> Symbol:
         """Element-wise raise to power by a `Float64`.
 
         Args:
@@ -666,7 +675,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return pow(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rsub__(self, rhs: Symbol) raises -> Symbol:
+    def __rsub__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise subtraction.
 
         Args:
@@ -678,7 +687,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(rhs, self, __call_location())
 
     @always_inline
-    fn __rsub__(self, rhs: Int) raises -> Symbol:
+    def __rsub__(self, rhs: Int) raises -> Symbol:
         """Element-wise subtraction by an `Int` literal.
 
         Args:
@@ -690,7 +699,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rsub__(self, rhs: Float64) raises -> Symbol:
+    def __rsub__(self, rhs: Float64) raises -> Symbol:
         """Element-wise subtraction by a `Float64`.
 
         Args:
@@ -702,7 +711,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rtruediv__(self, rhs: Symbol) raises -> Symbol:
+    def __rtruediv__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise division.
 
         Args:
@@ -714,7 +723,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return div(rhs, self, __call_location())
 
     @always_inline
-    fn __rtruediv__(self, rhs: Int) raises -> Symbol:
+    def __rtruediv__(self, rhs: Int) raises -> Symbol:
         """Element-wise division by an `Int` literal.
 
         Args:
@@ -726,7 +735,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return div(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __rtruediv__(self, rhs: Float64) raises -> Symbol:
+    def __rtruediv__(self, rhs: Float64) raises -> Symbol:
         """Element-wise division by a `Float64`.
 
         Args:
@@ -738,7 +747,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return div(self._consistent_scalar(rhs), self, __call_location())
 
     @always_inline
-    fn __sub__(self, rhs: Symbol) raises -> Symbol:
+    def __sub__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise subtraction.
 
         Args:
@@ -750,7 +759,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(self, rhs, __call_location())
 
     @always_inline
-    fn __sub__(self, rhs: Int) raises -> Symbol:
+    def __sub__(self, rhs: Int) raises -> Symbol:
         """Element-wise subtraction by an `Int` literal.
 
         Args:
@@ -762,7 +771,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __sub__(self, rhs: Float64) raises -> Symbol:
+    def __sub__(self, rhs: Float64) raises -> Symbol:
         """Element-wise subtraction by a `Float64`.
 
         Args:
@@ -774,7 +783,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return sub(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __truediv__(self, rhs: Symbol) raises -> Symbol:
+    def __truediv__(self, rhs: Symbol) raises -> Symbol:
         """Element-wise division.
 
         Args:
@@ -786,7 +795,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return div(self, rhs, __call_location())
 
     @always_inline
-    fn __truediv__(self, rhs: Int) raises -> Symbol:
+    def __truediv__(self, rhs: Int) raises -> Symbol:
         """Element-wise division by an `Int` literal.
 
         Args:
@@ -798,7 +807,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         return div(self, self._consistent_scalar(rhs), __call_location())
 
     @always_inline
-    fn __truediv__(self, rhs: Float64) raises -> Symbol:
+    def __truediv__(self, rhs: Float64) raises -> Symbol:
         """Element-wise division by a `Float64`.
 
         Args:
@@ -813,7 +822,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
     # Other ops
     # ===------------------------------------------------------------------=== #
 
-    fn print(self, label: String = "debug_tensor") raises:
+    def print(self, label: String = "debug_tensor") raises:
         """Prints this `Symbol`'s value at runtime.
 
         This uses `mo.debug.tensor.unsafe.print` to enable printing the runtime value
@@ -830,17 +839,17 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         # a chain as input and output enabling proper sequencing of prints.
         _ = g.nvop(
             "mo.debug.tensor.unsafe.print",
-            List(self),
+            [self],
             List[Type](),
-            List(_string_attr(g._context(), "label", label_prefix + label)),
+            [_string_attr(g._context(), "label", label_prefix + label)],
         )
 
     # ===------------------------------------------------------------------=== #
     # Graph manipulation
     # ===------------------------------------------------------------------=== #
 
-    fn insert_transformation(
-        self, transform: fn (Symbol) raises -> Symbol
+    def insert_transformation(
+        self, transform: def (Symbol) raises thin -> Symbol
     ) raises:
         """Inserts nodes in between this `Symbol` and all its current uses.
 
@@ -861,7 +870,7 @@ struct Symbol(Copyable, Movable, Stringable, Writable):
         dummy.handle.replace_all_uses_with(replacement.handle)
 
 
-@value
+@fieldwise_init
 struct SymbolicSlice(Copyable, Movable):
     """`Slice`-like struct with `Symbol` fields.
 
@@ -885,7 +894,7 @@ struct SymbolicSlice(Copyable, Movable):
         self.stop = stop
         self.step = Optional[Symbol]()
 
-    def __init__(out self, g: Graph, s: Slice):
+    def __init__(out self, g: Graph, s: Slice) raises:
         """Convenience constructor from a `Slice`.
 
         This wraps any indices in `s` into constant nodes (using `mo.constant`).

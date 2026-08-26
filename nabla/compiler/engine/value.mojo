@@ -12,11 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 """Defines different value types you can be pass in and out of models."""
 
-from sys.ffi import DLHandle, external_call
+from std.ffi import external_call
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import call_dylib_func, exchange
+from nabla.compiler._utils import null_ptr, call_dylib_func, exchange
 from nabla.compiler.tensor import Tensor
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._context import CRuntimeContext
 from ._tensor_impl import EngineTensor
@@ -30,15 +31,15 @@ struct Value:
     var _lib: DLHandle
     var _session: InferenceSession
 
-    alias _NewBorrowedTensorFnName = "M_createBorrowedTensor"
-    alias _NewBoolFnName = "M_createBoolAsyncValue"
-    alias _NewListFnName = "M_createListAsyncValue"
+    comptime _NewBorrowedTensorFnName = "M_createBorrowedTensor"
+    comptime _NewBoolFnName = "M_createBoolAsyncValue"
+    comptime _NewListFnName = "M_createListAsyncValue"
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CValue,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Internal use only.
 
@@ -54,28 +55,28 @@ struct Value:
         self._lib = lib
         self._session = session^
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Take ownership of the value contained in another `Value`.
 
         Args:
             existing: The value to take ownership of.
         """
-        self._ptr = exchange[CValue](existing._ptr, UnsafePointer[NoneType]())
+        self._ptr = exchange[CValue](existing._ptr, null_ptr[NoneType]())
         self._lib = existing._lib
         self._session = existing._session^
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Dispose of this reference to this value."""
         self._ptr.free(self._lib)
         _ = self._session^
 
     @staticmethod
-    fn _new_borrowed_tensor[
+    def _new_borrowed_tensor[
         type: DType
     ](
         ctx: CRuntimeContext,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
         tensor: Tensor[type],
     ) raises -> Self:
         var spec = EngineTensorSpec("", tensor.spec(), lib, session)
@@ -89,13 +90,13 @@ struct Value:
         _ = spec^
         return Self(ptr, lib, session^)
 
-    fn _as_engine_tensor(self) raises -> EngineTensor:
+    def _as_engine_tensor(self) raises -> EngineTensor:
         var ptr = self._ptr.get_c_tensor(self._lib)
         if not ptr.ptr:
             raise "value is not a tensor"
         return EngineTensor(ptr, self._lib, self._session)
 
-    fn as_tensor_copy[type: DType](self) raises -> Tensor[type]:
+    def as_tensor_copy[type: DType](self) raises -> Tensor[type]:
         """Return a copy of the tensor contained in this value.
 
         Parameters:
@@ -111,16 +112,16 @@ struct Value:
         return self._as_engine_tensor().tensor[type]()
 
     @staticmethod
-    fn _new_bool(
+    def _new_bool(
         ctx: CRuntimeContext,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
         value: Bool,
     ) raises -> Self:
         var ptr = call_dylib_func[CValue](lib, Self._NewBoolFnName, value, ctx)
         return Self(ptr, lib, session^)
 
-    fn as_bool(self) -> Bool:
+    def as_bool(self) -> Bool:
         """Get the boolean contained in this value.
 
         The result is undefined if this value is not a boolean.
@@ -131,13 +132,13 @@ struct Value:
         return self._ptr.get_bool(self._lib)
 
     @staticmethod
-    fn _new_list(
-        ctx: CRuntimeContext, lib: DLHandle, owned session: InferenceSession
+    def _new_list(
+        ctx: CRuntimeContext, lib: DLHandle, var session: InferenceSession
     ) raises -> Self:
         var ptr = call_dylib_func[CValue](lib, Self._NewListFnName, ctx)
         return Self(ptr, lib, session^)
 
-    fn as_list(self) raises -> List:
+    def as_list(self) raises -> List:
         """Borrow the list contained in this value.
 
         Ownership of the list is not transferred.  User must ensure the value
@@ -151,7 +152,7 @@ struct Value:
             raise "value is not a list"
         return List(ptr, self._lib, self._session)
 
-    fn _take_mojo_value[T: Movable](self) raises -> T:
+    def _take_mojo_value[T: Movable](self) raises -> T:
         """Move the mojo object out of this value.
 
         Owernship of the object is transfered to the caller.
@@ -184,11 +185,11 @@ struct List(Sized):
     var _lib: DLHandle
     var _session: InferenceSession
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CList,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Internal use only.
 
@@ -204,10 +205,10 @@ struct List(Sized):
         self._lib = lib
         self._session = session^
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Create a new List pointing at the internals of another List.
 
-        Lists do not own anything and are borrowed from the internal storage of
+        Lists do not own anything and are from the internal storage of
         a `Value`, so the user must continue to take care to ensure that the
         `Value` the original `List` was sourced from continues to outlive this
         new `List` object.
@@ -215,20 +216,20 @@ struct List(Sized):
         Args:
             existing: The List to represent.
         """
-        self._ptr = exchange[CList](existing._ptr, UnsafePointer[NoneType]())
+        self._ptr = exchange[CList](existing._ptr, null_ptr[NoneType]())
         self._lib = existing._lib
         self._session = existing._session^
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Release the handle to this list.
 
-        The underlying storage remains owned by the `Value` from which this
+        The underlying storage remains var by the `Value` from which this
         List was obtained.
         """
         self._ptr.free(self._lib)
         _ = self._session^
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         """Get the length of the list.
 
         Returns:
@@ -236,7 +237,7 @@ struct List(Sized):
         """
         return self._ptr.get_size(self._lib)
 
-    fn __getitem__(self, index: Int) raises -> Value:
+    def __getitem__(self, index: Int) raises -> Value:
         """Get the value at an index of the list.
 
         The returned `Value` owns a new reference to the underlying storage of
@@ -257,7 +258,7 @@ struct List(Sized):
             raise "list index out of range"
         return Value(c_value, self._lib, self._session)
 
-    fn append(self, value: Value):
+    def append(self, value: Value):
         """Append a Value to the list.
 
         The list will own a new reference to the value, so it is safe to allow

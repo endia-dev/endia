@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from utils import Variant
+from std.utils import Variant
 
 from nabla.api.array import Array
 from nabla.core.device_array import DeviceArray, zeros_like
@@ -25,31 +25,31 @@ from nabla.engine.utils import (
 from nabla.api.utils import none
 
 
-fn jvp_call(
+def jvp_call(
     meta: TrafoMeta,
     args: List[Array],
 ) raises -> List[Array]:
-    return args[: len(args) // 2]
+    return List(args[: len(args) // 2])
 
 
-fn jvp_end_rule(
+def jvp_end_rule(
     mut _args: List[Array],
     mut res: List[Array],
     mut meta: TrafoMeta,
 ) raises -> List[Array]:
-    meta["num_res"] = List(len(res))
+    meta["num_res"] = [len(res)]
 
     var args = _args[: len(_args) // 2]
     var tangents = _args[len(_args) // 2 :]
 
     for i in range(len(args)):
-        args[i].device_array[].impl[].tangents = List(
+        args[i].device_array[].impl[].tangents = [
             tangents[i].device_array[].impl
-        )
+        ]
 
     for arg in args:
-        arg[].device_array[].impl[]._compute_jvp = True
-        arg[].device_array[].impl[].tangents[-1][]._compute_jvp = True
+        arg.device_array[].impl[]._compute_jvp = True
+        arg.device_array[].impl[].tangents[len(arg.device_array[].impl[].tangents) - 1][]._compute_jvp = True
 
     var trace = List[DeviceArray]()
     for i in range(len(res)):
@@ -68,17 +68,17 @@ fn jvp_end_rule(
             continue
 
         for arg in array.args():
-            var primal = arg[]
+            var primal = arg
             primals.append(primal)
             if len(primal.impl[].tangents) == 0:
                 tangent = zeros_like(primal)
                 tangents.append(tangent)
             else:
-                var tangent = DeviceArray(primal.impl[].tangents[-1])
+                var tangent = DeviceArray(primal.impl[].tangents[len(primal.impl[].tangents) - 1])
                 tangents.append(tangent)
 
         var array_tangent = jvp_rule(primals, tangents, array)
-        array.impl[].tangents = List(array_tangent.impl)
+        array.impl[].tangents = [array_tangent.impl]
         array.impl[]._compute_jvp = False
 
     var res_tangents = List[Array]()
@@ -91,13 +91,13 @@ fn jvp_end_rule(
             )
 
     for array in trace:
-        array[].impl[].tangents.clear()
+        array.impl[].tangents.clear()
 
-    res = res + res_tangents
+    res = res + res_tangents.copy()
     for i in range(len(args)):
         _args[i].device_array[].impl[]._compute_jvp = False
         _args[i].device_array[].impl[].tangents.clear()
     for i in range(len(res)):
         res[i].device_array[].impl[].tangents.clear()
 
-    return res
+    return res.copy()

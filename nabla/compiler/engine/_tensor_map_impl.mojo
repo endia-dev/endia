@@ -11,65 +11,64 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys import alignof, sizeof
-from sys.ffi import DLHandle, external_call
+from std.sys import alignof, sizeof
+from std.ffi import external_call
+from nabla.compiler._dlhandle import DLHandle
 
 from nabla.compiler._utils import CString, call_dylib_func
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._status import Status
 from ._tensor_impl import CTensor
 from ._value_impl import CValue
 
 
-fn _destroy_pointee_wrapper[T: AnyType](ptr: UnsafePointer[T]):
+def _destroy_pointee_wrapper[T: AnyType](ptr: UnsafePointer[T]):
     ptr.destroy_pointee()
 
 
-@value
-@register_passable("trivial")
-struct CTensorMap:
+struct CTensorMap(TrivialRegisterPassable, ImplicitlyCopyable):
     """Represents AsyncTensorMap ptr from Engine."""
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn get_tensor_by_name(
-        self, owned name: String, lib: DLHandle
+    def get_tensor_by_name(
+        self, var name: String, lib: DLHandle
     ) raises -> CTensor:
         var status = Status(lib)
         var tensor = call_dylib_func[CTensor](
             lib,
             "M_getTensorByNameFrom",
             self,
-            name.unsafe_cstr_ptr(),
+            name.as_c_string_slice().unsafe_ptr(),
             status.borrow_ptr(),
         )
         if status:
-            raise status.__str__()
+            raise String(status)
         return tensor
 
-    fn get_value_by_name(
-        self, owned name: String, lib: DLHandle
+    def get_value_by_name(
+        self, var name: String, lib: DLHandle
     ) raises -> CValue:
         var status = Status(lib)
         var value = call_dylib_func[CValue](
             lib,
             "M_getValueByNameFrom",
             self,
-            name.unsafe_cstr_ptr(),
+            name.as_c_string_slice().unsafe_ptr(),
             status.borrow_ptr(),
         )
         if status:
-            raise status.__str__()
+            raise String(status)
         return value
 
-    fn borrow_tensor_by_name(
+    def borrow_tensor_by_name(
         self,
-        ptr: UnsafePointer[NoneType],
+        ptr: UnsafePointer[NoneType, MutUntrackedOrigin],
         spec: EngineTensorSpec,
         lib: DLHandle,
     ) raises:
@@ -83,12 +82,12 @@ struct CTensorMap:
             status.borrow_ptr(),
         )
         if status:
-            raise status.__str__()
+            raise String(status)
 
-    fn borrow_value_by_name(
+    def borrow_value_by_name(
         self,
         name: String,
-        ptr: UnsafePointer[NoneType],
+        ptr: UnsafePointer[NoneType, MutUntrackedOrigin],
         lib: DLHandle,
     ) raises:
         var status = Status(lib)
@@ -102,11 +101,11 @@ struct CTensorMap:
         )
         _ = name
         if status:
-            raise status.__str__()
+            raise String(status)
 
-    fn move_mojo_value_by_name[
+    def move_mojo_value_by_name[
         T: Movable
-    ](self, name: String, owned val: T, lib: DLHandle,) raises:
+    ](self, name: String, var val: T, lib: DLHandle,) raises:
         """Create a new MojoValue object and store in the tensormap.
 
         Parameters:
@@ -140,23 +139,23 @@ struct CTensorMap:
         if status:
             raise String(status)
 
-    fn keys(
-        self, size_ptr: UnsafePointer[Int64], lib: DLHandle
-    ) -> UnsafePointer[CString]:
-        return call_dylib_func[UnsafePointer[CString]](
+    def keys(
+        self, size_ptr: UnsafePointer[Int64, MutUntrackedOrigin], lib: DLHandle
+    ) -> UnsafePointer[CString, MutUntrackedOrigin]:
+        return call_dylib_func[UnsafePointer[CString, MutUntrackedOrigin]](
             lib, "M_tensorMapKeys", self, size_ptr
         )
 
-    fn size(self, lib: DLHandle) raises -> Int:
+    def size(self, lib: DLHandle) raises -> Int:
         var status = Status(lib)
         var size = call_dylib_func[Int](
             lib, "M_getTensorMapSize", self, status.borrow_ptr()
         )
         if status:
-            raise status.__str__()
+            raise String(status)
         return size
 
-    fn copy(self, lib: DLHandle) -> CTensorMap:
+    def copy(self, lib: DLHandle) -> CTensorMap:
         """
         Copies the AsyncTensorMap ptr. Increases underlying refcount.
         """
@@ -166,7 +165,7 @@ struct CTensorMap:
             self,
         )
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         """
         Free the AsyncTensorMap ptr.
         """

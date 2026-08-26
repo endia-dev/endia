@@ -11,24 +11,25 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Structs used for maintaining a collection of tensors."""
-from collections import Dict
-from collections.dict import _DictEntryIter, _DictKeyIter
+from std.collections import Dict
+from std.collections.dict import _DictEntryIter, _DictKeyIter
 
 from nabla.compiler.tensor import Tensor, TensorSpec
-from memory import UnsafePointer, memcpy
+from std.memory import alloc, UnsafePointer, memcpy
+from nabla.compiler._utils import null_ptr
 
 
-@value
-struct _CheckpointTensor:
+@fieldwise_init
+struct _CheckpointTensor(Copyable, Movable):
     """A wrapper around a Tensor pointer that can be saved/loaded from disk."""
 
     var ptr: UnsafePointer[UInt8]
     var spec: TensorSpec
 
-    fn __init__(
+    def __init__(
         out self,
-        owned ptr: UnsafePointer[UInt8],
-        owned spec: TensorSpec,
+        var ptr: UnsafePointer[UInt8],
+        var spec: TensorSpec,
     ):
         """Creates a _CheckpointTensor.
 
@@ -39,25 +40,25 @@ struct _CheckpointTensor:
         self.ptr = ptr
         self.spec = spec^
 
-    fn copy_to_tensor[T: DType](owned self) -> Tensor[T]:
+    def copy_to_tensor[T: DType](var self) -> Tensor[T]:
         """Returns a deep copy of the Tensor data."""
         var num_elements = self.spec.num_elements()
         var spec = self.spec
         var self_ptr = self.ptr.bitcast[Scalar[T]]()
-        var ptr = UnsafePointer[Scalar[T]].alloc(num_elements)
+        var ptr = alloc[Scalar[T]](num_elements)
         memcpy(ptr, self_ptr, num_elements)
         return Tensor[T](spec, ptr)
 
-    fn to_tensor[T: DType](owned self) -> Tensor[T]:
+    def to_tensor[T: DType](var self) -> Tensor[T]:
         """Converts this object to a Tensor."""
         var spec = self.spec^
         var ptr = self.ptr.bitcast[Scalar[T]]()
         self.spec = TensorSpec()
-        self.ptr = UnsafePointer[UInt8]()
+        self.ptr = null_ptr[UInt8]()
         return Tensor[T](spec, ptr)
 
     @staticmethod
-    fn from_tensor(owned tensor: Tensor) -> Self:
+    def from_tensor(var tensor: Tensor) -> Self:
         """Creates a _CheckpointTensor from a Tensor."""
         var spec = tensor.spec()
         var ptr = tensor._steal_ptr().bitcast[Scalar[DType.uint8]]()
@@ -95,11 +96,11 @@ struct TensorDict(Sized, Writable):
     def __init__(out self):
         self._items = Dict[String, _CheckpointTensor]()
 
-    fn __setitem__[T: DType](mut self, key: String, value: Tensor[T]):
+    def __setitem__[T: DType](mut self, key: String, value: Tensor[T]):
 
         self._items._insert(key, _CheckpointTensor.from_tensor(value))
 
-    fn set[T: DType](mut self, key: String, value: Tensor[T]):
+    def set[T: DType](mut self, key: String, value: Tensor[T]):
         """Adds or updates a tensor in the dictionary.
 
         Args:
@@ -108,7 +109,7 @@ struct TensorDict(Sized, Writable):
         """
         self._items._insert(key, _CheckpointTensor.from_tensor(value))
 
-    fn get[type: DType](self, key: String) raises -> Tensor[type]:
+    def get[type: DType](self, key: String) raises -> Tensor[type]:
         """Gets a tensor from the dictionary.
 
         Currently, this returns a copy of the tensor. For better performance,
@@ -128,7 +129,7 @@ struct TensorDict(Sized, Writable):
         except e:
             raise Error("Error when getting key '", key, "': ", e)
 
-    fn _set(mut self, key: String, value: _CheckpointTensor):
+    def _set(mut self, key: String, value: _CheckpointTensor):
         """Adds or updates a tensor in the dictionary.
 
         Args:
@@ -137,7 +138,7 @@ struct TensorDict(Sized, Writable):
         """
         self._items._insert(key, value)
 
-    fn _get(self, key: String) raises -> _CheckpointTensor:
+    def _get(self, key: String) raises -> _CheckpointTensor:
         """Gets a raw `CheckpointTensor` value from the dictionary.
 
         Args:
@@ -145,7 +146,7 @@ struct TensorDict(Sized, Writable):
         """
         return self._items[key]
 
-    fn pop[type: DType](mut self, key: String) raises -> Tensor[type]:
+    def pop[type: DType](mut self, key: String) raises -> Tensor[type]:
         """Removes a tensor from the dictionary.
 
         This function moves the Tensor pointer out of the dictionary and returns
@@ -162,27 +163,27 @@ struct TensorDict(Sized, Writable):
         except e:
             raise Error("Error when getting key '", key, "': ", e)
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return len(self._items)
 
-    fn items(
+    def items(
         ref self,
-    ) -> _DictEntryIter[String, _CheckpointTensor, __origin_of(self._items)]:
+    ) -> _DictEntryIter[String, _CheckpointTensor, origin_of(self._items)]:
         """Gets an iterable view of all elements in the dictionary."""
         return _DictEntryIter(0, 0, self._items)
 
-    fn keys(
+    def keys(
         ref self,
-    ) -> _DictKeyIter[String, _CheckpointTensor, __origin_of(self._items)]:
+    ) -> _DictKeyIter[String, _CheckpointTensor, origin_of(self._items)]:
         """Gets an iterable view of all keys in the dictionary."""
         return _DictKeyIter(_DictEntryIter(0, 0, self._items))
 
     def __iter__(
         ref self,
-    ) -> _DictKeyIter[String, _CheckpointTensor, __origin_of(self._items)]:
+    ) -> _DictKeyIter[String, _CheckpointTensor, origin_of(self._items)]:
         return _DictKeyIter(_DictEntryIter(0, 0, self._items))
 
-    fn __copyinit__(out self, existing: Self):
+    def __init__(out self, *, copy: Self):
         """Copies a dictionary.
 
         Args:
@@ -190,7 +191,7 @@ struct TensorDict(Sized, Writable):
         """
         self._items = existing._items
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Moves data of an existing dictionary into a new one.
 
         Args:
@@ -198,14 +199,14 @@ struct TensorDict(Sized, Writable):
         """
         self._items = existing._items^
 
-    fn __str__(self) -> String:
-        return String.write(self)
+    def __str__(self) -> String:
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         writer.write("TensorDict(")
         var first = True
         for key_ref in self._items.keys():
-            var key = key_ref[]
+            var key = key_ref
             if first:
                 first = False
             else:

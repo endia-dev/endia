@@ -118,7 +118,7 @@ def qmatmul[encoding: QuantizationEncoding](lhs: Symbol, rhs: Symbol) -> Symbol:
     # Quantized matmul for supported quantized encoding types.
     # rhs is uint8 and in a packed format such as Q4_0, Q4_K, or Q6_K.
     rhs_dtype = rhs.type().tensor().dtype
-    if rhs_dtype is not DType.uint8:
+    if rhs_dtype != DType.uint8:
         raise Error("expected uint8 DType but got ", rhs_dtype)
 
     g = lhs.graph()
@@ -132,9 +132,9 @@ def qmatmul[encoding: QuantizationEncoding](lhs: Symbol, rhs: Symbol) -> Symbol:
     rhs_shape = ops.shape_of(rhs)
     last_lhs_axis = lhs_type.rank() - 1
     reshape_shape = ops.stack(
-        List(g.scalar(Int64(-1)), lhs_shape[last_lhs_axis])
+        [g.scalar(Int64(-1)), lhs_shape[last_lhs_axis]]
     )
-    final_shape = ops.concat(List(lhs_shape[:last_lhs_axis], rhs_shape[0:1]))
+    final_shape = ops.concat([lhs_shape[:last_lhs_axis], rhs_shape[0:1]])
 
     # Compute dims for reshape and matmul result types.
     final_dims = List[Dim]()

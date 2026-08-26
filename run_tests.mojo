@@ -15,7 +15,7 @@
 from tests import *
 
 
-def main():
+def main() raises:
     test_broadcast0()
     test_broadcast1()
     test_broadcast2()

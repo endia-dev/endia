@@ -11,41 +11,40 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections.string import StaticString
-from sys.ffi import DLHandle
+from std.collections.string import StaticString
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import CString, call_dylib_func, exchange
-from memory import UnsafePointer
+from nabla.compiler._utils import null_ptr, CString, call_dylib_func, exchange
+from std.memory import UnsafePointer
 
 from ._compilation import CCompiledModel
 from ._status import Status
 
 
-@value
-@register_passable("trivial")
-struct CTensorNameArray:
+@fieldwise_init
+struct CTensorNameArray(TrivialRegisterPassable, ImplicitlyCopyable):
     """Mojo representation of Engine's TensorArray pointer.
     This doesn't free the memory on destruction.
     """
 
     var ptr: UnsafePointer[NoneType]
 
-    alias FreeTensorNameArrayFnName = "M_freeTensorNameArray"
-    alias GetTensorNameAtFnName = "M_getTensorNameAt"
+    comptime FreeTensorNameArrayFnName = "M_freeTensorNameArray"
+    comptime GetTensorNameAtFnName = "M_getTensorNameAt"
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType]):
         self.ptr = ptr
 
-    fn get_name_at(self, idx: Int, lib: DLHandle) raises -> String:
+    def get_name_at(self, idx: Int, lib: DLHandle) raises -> String:
         if not self.ptr:
             raise "failed to get tensor name"
         var name = call_dylib_func[CString](
             lib, Self.GetTensorNameAtFnName, self, idx
         )
-        return name.__str__()
+        return String(name)
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeTensorNameArrayFnName, self)
 
 
@@ -55,22 +54,22 @@ struct TensorNamesIterator(Sized):
     var length: Int
     var lib: DLHandle
 
-    fn __init__(out self, ptr: CTensorNameArray, length: Int, lib: DLHandle):
+    def __init__(out self, ptr: CTensorNameArray, length: Int, lib: DLHandle):
         self.ptr = ptr
         self.current = 0
         self.length = length
         self.lib = lib
 
-    fn __next__(mut self) raises -> String:
+    def __next__(mut self) raises -> String:
         var next = self.ptr.get_name_at(self.current, self.lib)
         self.current += 1
         return next
 
     @always_inline
-    fn __has_next__(self) -> Bool:
+    def __has_next__(self) -> Bool:
         return self.__len__() > 0
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         if self.current == self.length:
             return 0
         return 1
@@ -81,7 +80,7 @@ struct TensorNames(Sized):
     var lib: DLHandle
     var length: Int
 
-    fn __init__(
+    def __init__(
         out self,
         fn_name: String,
         ptr: CCompiledModel,
@@ -96,25 +95,25 @@ struct TensorNames(Sized):
             status.borrow_ptr(),
         )
         if status:
-            print(status.__str__())
-            self.ptr = UnsafePointer[NoneType]()
+            print(String(status))
+            self.ptr = null_ptr[NoneType]()
         self.length = length
         self.lib = lib
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = exchange[CTensorNameArray](
-            existing.ptr, UnsafePointer[NoneType]()
+            existing.ptr, null_ptr[NoneType]()
         )
         self.length = existing.length
         self.lib = existing.lib
 
-    fn __getitem__(self, idx: Int) raises -> String:
+    def __getitem__(self, idx: Int) raises -> String:
         return self.ptr.get_name_at(idx, self.lib)
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return self.length
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.lib)
 
 
@@ -123,9 +122,9 @@ struct InputTensorNames(Sized):
 
     var names: TensorNames
 
-    alias GetInputTensorNamesFnName = "M_getInputNames"
+    comptime GetInputTensorNamesFnName = "M_getInputNames"
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CCompiledModel,
         length: Int,
@@ -135,13 +134,13 @@ struct InputTensorNames(Sized):
             Self.GetInputTensorNamesFnName, ptr, length, lib
         )
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.names = existing.names^
 
-    fn __getitem__(self, idx: Int) raises -> String:
+    def __getitem__(self, idx: Int) raises -> String:
         return self.names[idx]
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return len(self.names)
 
 
@@ -150,9 +149,9 @@ struct OutputTensorNames(Sized):
 
     var names: TensorNames
 
-    alias GetOutputTensorNamesFnName = "M_getOutputNames"
+    comptime GetOutputTensorNamesFnName = "M_getOutputNames"
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CCompiledModel,
         length: Int,
@@ -162,11 +161,11 @@ struct OutputTensorNames(Sized):
             Self.GetOutputTensorNamesFnName, ptr, length, lib
         )
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.names = existing.names^
 
-    fn __getitem__(self, idx: Int) raises -> String:
+    def __getitem__(self, idx: Int) raises -> String:
         return self.names[idx]
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return len(self.names)

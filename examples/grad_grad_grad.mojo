@@ -14,19 +14,17 @@
 import nabla
 
 
-fn test_grad_grad_grad() raises:
-    fn foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return List(
-            nabla.sum(nabla.sin(args[0] * args[1])),
-            nabla.sum(nabla.cos(args[0] * args[1])),
-        )
+def test_grad_grad_grad() raises:
+    def foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return [nabla.sum(nabla.sin(args[0] * args[1])),
+            nabla.sum(nabla.cos(args[0] * args[1])),]
 
     var foo_vmapped = nabla.vmap(foo)
     var foo_d1 = nabla.grad(foo_vmapped)
     var foo_d2 = nabla.grad(foo_d1)
     var foo_d3 = nabla.grad(foo_d2)
 
-    var args = List(nabla.arange((2, 3)), nabla.arange((2, 3)))
+    var args: List[nabla.Array] = [nabla.arange((2, 3)), nabla.arange((2, 3))]
 
     var res = foo(args)
     # print(nabla.xpr(foo)(args))

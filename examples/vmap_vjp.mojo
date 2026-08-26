@@ -14,27 +14,28 @@
 import nabla
 
 
-def foo(args: List[nabla.Array]) -> List[nabla.Array]:
+def foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
     x = args[0]
     y = args[1]
-    return List(nabla.sin(x) + x**2 + y**2, nabla.cos(y) + y * x)
+    return [nabla.sin(x) + x**2 + y**2, nabla.cos(y) + y * x]
 
 
-def test_vmap_vjp():
+def test_vmap_vjp() raises:
     var x = nabla.arange((3, 2, 3)) + 2
     var y = nabla.arange((3, 2, 3)) + 3
 
     # Step 1: Compute the gradient using VJP.
-    def reg_vjp(args: List[nabla.Array]) -> List[nabla.Array]:
-        _, vjp_fn = nabla.vjp(foo, args)
+    def reg_vjp(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        var _pair = nabla.vjp(foo, args)
+        var vjp_fn = _pair[1].copy()
         return vjp_fn(
-            List(nabla.ones((2, 3)), nabla.ones((2, 3)))
+            [nabla.ones((2, 3)), nabla.ones((2, 3))]
         )  # This extracts f'(x)
 
-    vjp_vmapped = nabla.vmap(reg_vjp, in_axes=List(0, 0))
-    vjp_result = vjp_vmapped(List(x, y))
+    vjp_vmapped = nabla.vmap(reg_vjp, in_axes=[0, 0])
+    vjp_result = vjp_vmapped([x, y])
 
     print("First Order VJP:")
-    # print(nabla.xpr(grad_fn)(List(x)))
+    # print(nabla.xpr(grad_fn)([x]))
     print(vjp_result[0])
     print(vjp_result[1])

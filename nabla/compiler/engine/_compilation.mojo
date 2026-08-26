@@ -11,15 +11,16 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import List, Optional
-from collections.string import StringSlice
-from pathlib import Path
-from sys import external_call
-from sys.ffi import DLHandle, c_char
+from std.collections import List, Optional
+from std.collections.string import StringSlice
+from std.pathlib import Path
+from std.ffi import external_call
+from std.ffi import c_char
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import OwningVector, call_dylib_func, exchange
+from nabla.compiler._utils import mut_ptr, null_ptr, OwningVector, call_dylib_func, exchange
 from nabla.compiler.tensor import TensorSpec
-from memory import OwnedPointer, UnsafePointer
+from std.memory import OwnedPointer, UnsafePointer
 
 from ._model_specs import InputTensorNames, OutputTensorNames
 from ._status import Status
@@ -27,69 +28,66 @@ from ._tensor_spec_impl import CTensorSpec
 from .session import InferenceSession
 
 
-@value
-@register_passable("trivial")
-struct FrameworkFormat:
+@fieldwise_init
+struct FrameworkFormat(TrivialRegisterPassable, ImplicitlyCopyable):
     """Enum-like struct indicating the model framework."""
 
-    alias MAXGraph = FrameworkFormat(0)
-    alias TorchscriptModule = FrameworkFormat(1)
-    alias TorchscriptFunction = FrameworkFormat(2)
-    alias TorchMLIR = FrameworkFormat(3)
+    comptime MAXGraph = FrameworkFormat(0)
+    comptime TorchscriptModule = FrameworkFormat(1)
+    comptime TorchscriptFunction = FrameworkFormat(2)
+    comptime TorchMLIR = FrameworkFormat(3)
 
     var value: UInt8
 
 
-@value
-@register_passable("trivial")
-struct ModelSource(Copyable, Movable):
+@fieldwise_init
+struct ModelSource(TrivialRegisterPassable, ImplicitlyCopyable, Copyable, Movable):
     """Model source representation that is ABI compatible with the C API's `M_ModelSource`.
     """
 
-    var source: UnsafePointer[NoneType]
+    var source: UnsafePointer[NoneType, MutUntrackedOrigin]
     var format: FrameworkFormat
 
 
-@value
-@register_passable("trivial")
-struct CCompileConfig:
+@fieldwise_init
+struct CCompileConfig(TrivialRegisterPassable, ImplicitlyCopyable):
     """Mojo representation of Engine's CompileConfig pointer.
     This doesn't free the memory on destruction. For memory managed
     option see CompileConfig.
     """
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias FreeCompileConfigFnName = "M_freeCompileConfig"
-    alias SetModelSourceFnName = "M_setModelSourceInternal"
-    alias SetPipelineNameFnName = "M_setPipelineName"
-    alias SetModelPathFnName = "M_setModelPath"
-    alias ReplaceOpsFnName = "M_useKernelsFrom"
-    alias SetTorchInputSpecsFnName = "M_setTorchInputSpecs"
+    comptime FreeCompileConfigFnName = "M_freeCompileConfig"
+    comptime SetModelSourceFnName = "M_setModelSourceInternal"
+    comptime SetPipelineNameFnName = "M_setPipelineName"
+    comptime SetModelPathFnName = "M_setModelPath"
+    comptime ReplaceOpsFnName = "M_useKernelsFrom"
+    comptime SetTorchInputSpecsFnName = "M_setTorchInputSpecs"
 
-    fn set_model_source(self, model_source: ModelSource, lib: DLHandle):
+    def set_model_source(self, model_source: ModelSource, lib: DLHandle):
         call_dylib_func(lib, Self.SetModelSourceFnName, self, model_source)
 
-    fn set_pipeline_name(self, name: String, lib: DLHandle):
+    def set_pipeline_name(self, name: String, lib: DLHandle):
         call_dylib_func(
             lib, Self.SetPipelineNameFnName, self, name.unsafe_ptr()
         )
 
-    fn set_model_path(self, owned path: String, lib: DLHandle):
+    def set_model_path(self, var path: String, lib: DLHandle):
         """Sets the path of model to compile."""
         call_dylib_func(
-            lib, Self.SetModelPathFnName, self, path.unsafe_cstr_ptr()
+            lib, Self.SetModelPathFnName, self, path.as_c_string_slice().unsafe_ptr()
         )
 
-    fn replace_ops(self, owned path: String, lib: DLHandle) raises:
+    def replace_ops(self, var path: String, lib: DLHandle) raises:
         var status = Status(lib)
         call_dylib_func(
-            lib, Self.ReplaceOpsFnName, self, path.unsafe_cstr_ptr(), status.ptr
+            lib, Self.ReplaceOpsFnName, self, path.as_c_string_slice().unsafe_ptr(), status.ptr
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
 
-    fn set_torch_input_specs(
+    def set_torch_input_specs(
         self,
         torch_lib: DLHandle,
         specs_ptr: List[CTorchInputSpec],
@@ -98,53 +96,52 @@ struct CCompileConfig:
             torch_lib,
             Self.SetTorchInputSpecsFnName,
             self,
-            specs_ptr.data,
+            specs_ptr.unsafe_ptr(),
             len(specs_ptr),
         )
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeCompileConfigFnName, self)
 
 
-@value
-@register_passable("trivial")
-struct CTorchInputSpec(Copyable, Movable):
+@fieldwise_init
+struct CTorchInputSpec(TrivialRegisterPassable, ImplicitlyCopyable, Copyable, Movable):
     """C API ABI compatible M_TorchInputSpec."""
 
-    alias ptr_type = UnsafePointer[NoneType]
+    comptime ptr_type = UnsafePointer[NoneType, MutUntrackedOrigin]
     var ptr: Self.ptr_type
 
-    alias FreeTorchInputSpecFnName = "M_freeTorchInputSpec"
+    comptime FreeTorchInputSpecFnName = "M_freeTorchInputSpec"
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeTorchInputSpecFnName, self)
 
 
 struct TorchInputSpec(Movable):
-    alias shape_type = List[Int64]
+    comptime shape_type = List[Int64]
     var shape: Self.shape_type
     var dtype: DType
     var ptr: CTorchInputSpec
     var torch_lib: DLHandle
 
-    alias NewTorchInputSpecFnName = "M_newTorchInputSpec"
+    comptime NewTorchInputSpecFnName = "M_newTorchInputSpec"
 
-    fn __init__(out self, spec: TensorSpec, lib: DLHandle) raises:
+    def __init__(out self, spec: TensorSpec, lib: DLHandle) raises:
         var shape = Self.shape_type()
         shape.reserve(spec.rank())
         for i in range(spec.rank()):
-            shape.append(spec[i])
-        self.shape = shape
+            shape.append(Int64(spec[i]))
+        self.shape = shape.copy()
         self.dtype = spec.dtype()
         var status = Status(lib)
         var ptr = call_dylib_func[CTorchInputSpec](
             lib,
             Self.NewTorchInputSpecFnName,
-            self.shape.data,
-            UnsafePointer[NoneType](),
+            self.shape.unsafe_ptr(),
+            null_ptr[NoneType](),
             len(self.shape),
             self.dtype,
-            UnsafePointer[NoneType](),
+            null_ptr[NoneType](),
             status.ptr,
         )
         if status:
@@ -152,7 +149,7 @@ struct TorchInputSpec(Movable):
         self.ptr = ptr
         self.torch_lib = lib
 
-    fn __init__(
+    def __init__(
         out self,
         shape: List[ShapeElement],
         dtype: DType,
@@ -160,22 +157,22 @@ struct TorchInputSpec(Movable):
         engine_lib: DLHandle,
     ) raises:
         var converted_shape = Self.shape_type()
-        var converted_dim_names = List[UnsafePointer[c_char]]()
+        var converted_dim_names = List[UnsafePointer[c_char, ImmUntrackedOrigin]]()
         converted_shape.reserve(len(shape))
 
         var strs = List[String]()
         for dim in shape:
-            if dim[].is_static():
-                converted_shape.append(dim[].static_value())
-                converted_dim_names.append(UnsafePointer[c_char]())
+            if dim.is_static():
+                converted_shape.append(Int64(dim.static_value()))
+                converted_dim_names.append(null_ptr[c_char]().as_imm())
             else:
                 converted_shape.append(
-                    CTensorSpec.get_dynamic_dimension_value(engine_lib)
+                    Int64(CTensorSpec.get_dynamic_dimension_value(engine_lib))
                 )
-                var str = dim[]._name
+                var str = dim._name
                 strs.append(str^)  # Keep the string alive.
-                var c_str = strs[len(strs) - 1].unsafe_cstr_ptr()
-                converted_dim_names.append(c_str)
+                var c_str = strs[len(strs) - 1].as_c_string_slice().unsafe_ptr()
+                converted_dim_names.append(c_str.unsafe_origin_cast[ImmUntrackedOrigin]())
 
         self.shape = converted_shape^
         self.dtype = dtype
@@ -183,11 +180,11 @@ struct TorchInputSpec(Movable):
         var ptr = call_dylib_func[CTorchInputSpec](
             lib,
             Self.NewTorchInputSpecFnName,
-            self.shape.data,
-            converted_dim_names.data,
+            self.shape.unsafe_ptr(),
+            converted_dim_names.unsafe_ptr(),
             len(self.shape),
             self.dtype,
-            UnsafePointer[NoneType](),
+            null_ptr[NoneType](),
             status.ptr,
         )
 
@@ -196,7 +193,7 @@ struct TorchInputSpec(Movable):
         self.ptr = ptr
         self.torch_lib = lib
 
-    fn __init__(
+    def __init__(
         out self,
         shape: NoneType,
         dtype: DType,
@@ -209,8 +206,8 @@ struct TorchInputSpec(Movable):
         var ptr = call_dylib_func[CTorchInputSpec](
             lib,
             Self.NewTorchInputSpecFnName,
-            CTorchInputSpec.ptr_type(),
-            UnsafePointer[NoneType](),
+            null_ptr[NoneType](),
+            null_ptr[NoneType](),
             CTensorSpec.get_dynamic_rank_value(engine_lib),
             self.dtype,
             status.ptr,
@@ -220,13 +217,13 @@ struct TorchInputSpec(Movable):
         self.ptr = ptr
         self.torch_lib = lib
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.shape = existing.shape^
         self.dtype = existing.dtype
-        self.ptr = existing.ptr
+        self.ptr = existing.ptr.copy()
         self.torch_lib = existing.torch_lib
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.torch_lib)
 
 
@@ -238,10 +235,10 @@ struct CompileConfig:
     var torch_lib: Optional[DLHandle]
     var input_specs: OwningVector[TorchInputSpec]
 
-    alias NewCompileConfigFnName = "M_newCompileConfig"
+    comptime NewCompileConfigFnName = "M_newCompileConfig"
 
     @implicit
-    fn __init__(out self, lib: DLHandle):
+    def __init__(out self, lib: DLHandle):
         self._ptr = OwnedPointer(
             call_dylib_func[CCompileConfig](lib, Self.NewCompileConfigFnName)
         )
@@ -250,17 +247,17 @@ struct CompileConfig:
         self.torch_lib = Self._get_torch_lib()
 
     @staticmethod
-    fn _get_torch_lib() -> Optional[DLHandle]:
+    def _get_torch_lib() -> Optional[DLHandle]:
         # Since we only need to open this library for this case we
         # can lazy load it here.
-        alias key = StaticString(".torch_ext_lib")
+        comptime key = StaticString(".torch_ext_lib")
 
         # TODO: Move KGEN_CompilerRT_getMAXConfigValue to a helper somewhere.
         var torch_ext_lib_path_str_ptr = external_call[
-            "KGEN_CompilerRT_getMAXConfigValue", UnsafePointer[UInt8]
+            "KGEN_CompilerRT_getMAXConfigValue", UnsafePointer[UInt8, MutUntrackedOrigin]
         ](key.unsafe_ptr(), key.byte_length())
 
-        if not torch_ext_lib_path_str_ptr:
+        if Int(torch_ext_lib_path_str_ptr) == 0:
             return None
 
         var torch_ext_lib_path = String(
@@ -274,27 +271,27 @@ struct CompileConfig:
         except:
             return None
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self._ptr = existing._ptr^
         self.lib = existing.lib
         self.input_specs = existing.input_specs^
         self.torch_lib = existing.torch_lib
 
-    fn set_model_source(self, model_source: ModelSource):
+    def set_model_source(self, model_source: ModelSource):
         self._ptr[].set_model_source(model_source, self.lib)
 
-    fn set_pipeline_name(self, name: String):
+    def set_pipeline_name(self, name: String):
         self._ptr[].set_pipeline_name(name, self.lib)
 
-    fn set_model_path(self, path: String):
+    def set_model_path(self, path: String):
         """Sets the path of model to compile."""
         self._ptr[].set_model_path(path, self.lib)
 
-    fn set_replace_ops_path(self, path: String) raises:
+    def set_replace_ops_path(self, path: String) raises:
         """Replace Modular kernels with user-defined kernels."""
         self._ptr[].replace_ops(path, self.lib)
 
-    fn set_torch_input_specs(self) raises:
+    def set_torch_input_specs(self) raises:
         if len(self.input_specs) == 0:
             return
 
@@ -307,12 +304,12 @@ struct CompileConfig:
             inner_spec.append(spec_ptr[].ptr)
         self._ptr[].set_torch_input_specs(self.torch_lib.value(), inner_spec)
 
-    fn add_input_spec(mut self, spec: TensorSpec) raises:
+    def add_input_spec(mut self, spec: TensorSpec) raises:
         self.input_specs.emplace_back(
             TorchInputSpec(spec, self.torch_lib.value())
         )
 
-    fn add_input_spec(
+    def add_input_spec(
         mut self,
         shape_or: Optional[List[ShapeElement]],
         dtype: DType,
@@ -331,10 +328,10 @@ struct CompileConfig:
             )
         )
 
-    fn borrow_ptr(self) -> UnsafePointer[CCompileConfig]:
-        return self._ptr.unsafe_ptr()
+    def borrow_ptr(self) -> UnsafePointer[CCompileConfig, MutUntrackedOrigin]:
+        return mut_ptr(self._ptr.unsafe_ptr().unsafe_origin_cast[ImmUntrackedOrigin]())
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         if self.torch_lib:
             var torch = self.torch_lib.value()
             torch.close()
@@ -342,27 +339,25 @@ struct CompileConfig:
         self._ptr[].free(self.lib)
 
 
-@value
-@register_passable("trivial")
-struct CCompiledModel:
+struct CCompiledModel(TrivialRegisterPassable, ImplicitlyCopyable):
     """Mojo representation of Engine's AsyncCompiledModel pointer.
     Useful for C inter-op.
     """
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias FreeCompiledModelFnName = "M_freeCompiledModel"
-    alias GetModelInputSpecByNameFnName = "M_getModelInputSpecByName"
-    alias GetModelOutputSpecByNameFnName = "M_getModelOutputSpecByName"
-    alias GetNumInputsFnName = "M_getNumModelInputs"
-    alias GetNumOutputsFnName = "M_getNumModelOutputs"
-    alias ExportModelFnName = "M_exportCompiledModel"
+    comptime FreeCompiledModelFnName = "M_freeCompiledModel"
+    comptime GetModelInputSpecByNameFnName = "M_getModelInputSpecByName"
+    comptime GetModelOutputSpecByNameFnName = "M_getModelOutputSpecByName"
+    comptime GetNumInputsFnName = "M_getNumModelInputs"
+    comptime GetNumOutputsFnName = "M_getNumModelOutputs"
+    comptime ExportModelFnName = "M_exportCompiledModel"
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn num_model_inputs(self, lib: DLHandle) raises -> Int:
+    def num_model_inputs(self, lib: DLHandle) raises -> Int:
         """Gets the number of inputs of the model."""
 
         var status = Status(lib)
@@ -370,10 +365,10 @@ struct CCompiledModel:
             lib, Self.GetNumInputsFnName, self, status.ptr
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
         return num_inputs
 
-    fn num_model_outputs(self, lib: DLHandle) raises -> Int:
+    def num_model_outputs(self, lib: DLHandle) raises -> Int:
         """Gets the number of outputs of the model."""
 
         var status = Status(lib)
@@ -381,14 +376,14 @@ struct CCompiledModel:
             lib, Self.GetNumOutputsFnName, self, status.ptr
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
         return num_outputs
 
-    fn get_model_input_spec_by_name(
+    def get_model_input_spec_by_name(
         self,
-        owned tensor_name: String,
+        var tensor_name: String,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ) raises -> EngineTensorSpec:
         """Gets the input spec of the model by name."""
         var status = Status(lib)
@@ -396,18 +391,18 @@ struct CCompiledModel:
             lib,
             Self.GetModelInputSpecByNameFnName,
             self,
-            tensor_name.unsafe_cstr_ptr(),
+            tensor_name.as_c_string_slice().unsafe_ptr(),
             status.ptr,
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
         return EngineTensorSpec(input_spec, lib, session)
 
-    fn get_model_output_spec_by_name(
+    def get_model_output_spec_by_name(
         self,
-        owned tensor_name: String,
+        var tensor_name: String,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ) raises -> EngineTensorSpec:
         """Gets the output spec of the model by name."""
         var status = Status(lib)
@@ -415,52 +410,52 @@ struct CCompiledModel:
             lib,
             Self.GetModelOutputSpecByNameFnName,
             self,
-            tensor_name.unsafe_cstr_ptr(),
+            tensor_name.as_c_string_slice().unsafe_ptr(),
             status.ptr,
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
         return EngineTensorSpec(output_spec, lib, session)
 
-    fn export_compiled_model(self, lib: DLHandle, owned path: String) raises:
+    def export_compiled_model(self, lib: DLHandle, var path: String) raises:
         var status = Status(lib)
         call_dylib_func(
             lib,
             Self.ExportModelFnName,
             self,
-            path.unsafe_cstr_ptr(),
+            path.as_c_string_slice().unsafe_ptr(),
             status.ptr,
         )
         if status:
-            raise Error(status.__str__())
+            raise Error(String(status))
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeCompiledModelFnName, self)
 
 
-@value
-struct CompiledModel:
+@fieldwise_init
+struct CompiledModel(Copyable, Movable):
     """Memory managed CompiledModel pointer."""
 
     var ptr: CCompiledModel
     var lib: DLHandle
     var session: InferenceSession
 
-    alias CompileModelFnName = "M_compileModelSync"
+    comptime CompileModelFnName = "M_compileModelSync"
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = exchange[CCompiledModel](
-            existing.ptr, UnsafePointer[NoneType]()
+            existing.ptr, null_ptr[NoneType]()
         )
         self.lib = existing.lib
         self.session = existing.session^
 
-    fn num_model_inputs(self) raises -> Int:
+    def num_model_inputs(self) raises -> Int:
         """Gets the number of inputs of the model."""
 
         return self.ptr.num_model_inputs(self.lib)
 
-    fn get_model_input_names(self) raises -> List[String]:
+    def get_model_input_names(self) raises -> List[String]:
         """Gets the names of model inputs."""
 
         var names = InputTensorNames(
@@ -472,12 +467,12 @@ struct CompiledModel:
             name_vec.append(names[i])
         return name_vec
 
-    fn num_model_outputs(self) raises -> Int:
+    def num_model_outputs(self) raises -> Int:
         """Gets the number of outputs of the model."""
 
         return self.ptr.num_model_outputs(self.lib)
 
-    fn get_model_output_names(self) raises -> List[String]:
+    def get_model_output_names(self) raises -> List[String]:
         """Gets the names of model outputs."""
 
         var names = OutputTensorNames(
@@ -489,7 +484,7 @@ struct CompiledModel:
             name_vec.append(names[i])
         return name_vec
 
-    fn get_model_input_metadata(self) raises -> List[EngineTensorSpec]:
+    def get_model_input_metadata(self) raises -> List[EngineTensorSpec]:
         """Get the metadata for inputs of the model."""
         var input_metadata = List[EngineTensorSpec]()
         var input_tensor_names = self.get_model_input_names()
@@ -497,12 +492,12 @@ struct CompiledModel:
 
         for input_tensor_name in input_tensor_names:
             var input_spec = self.ptr.get_model_input_spec_by_name(
-                input_tensor_name[], self.lib, self.session
+                input_tensor_name, self.lib, self.session
             )
             input_metadata.append(input_spec^)
         return input_metadata
 
-    fn get_model_output_metadata(self) raises -> List[EngineTensorSpec]:
+    def get_model_output_metadata(self) raises -> List[EngineTensorSpec]:
         """Get the metadata for outputs of the model."""
         var output_metadata = List[EngineTensorSpec]()
         var output_tensor_names = self.get_model_output_names()
@@ -510,17 +505,17 @@ struct CompiledModel:
 
         for output_tensor_name in output_tensor_names:
             var output_spec = self.ptr.get_model_output_spec_by_name(
-                output_tensor_name[], self.lib, self.session
+                output_tensor_name, self.lib, self.session
             )
             output_metadata.append(output_spec^)
         return output_metadata
 
-    fn borrow_ptr(self) -> CCompiledModel:
+    def borrow_ptr(self) -> CCompiledModel:
         return self.ptr
 
-    fn export_compiled_model(self, lib: DLHandle, path: String) raises:
+    def export_compiled_model(self, lib: DLHandle, path: String) raises:
         self.ptr.export_compiled_model(lib, path)
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free(self.lib)
         _ = self.session^

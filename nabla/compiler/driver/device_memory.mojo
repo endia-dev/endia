@@ -11,20 +11,22 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections import Optional
+from std.collections import Optional
 
 from nabla.compiler.tensor import TensorShape, TensorSpec
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._driver_library import DriverLibrary
 from ._status import Status
 from .anytensor import AnyTensor
 from .device import Device, _CDevice
 from .tensor import Tensor
+from nabla.compiler._utils import null_ptr
+from std.os import abort
 
 
 trait DeviceBuffer:
-    fn copy_to(self, dev: Device, name: Optional[String]) raises -> Self:
+    def copy_to(self, dev: Device, name: Optional[String]) raises -> Self:
         """Copies the contents of self into DeviceBuffer allocated on dev.
         Note: this function allocates memory on dev.
 
@@ -40,7 +42,7 @@ trait DeviceBuffer:
         """
         ...
 
-    fn copy_into(self, mut dst_memory: Self) raises:
+    def copy_into(self, mut dst_memory: Self) raises:
         """Copies the contents of self into a preallocated DeviceBuffer.
 
         Args:
@@ -48,7 +50,7 @@ trait DeviceBuffer:
         """
         ...
 
-    fn move_to(owned self, dev: Device) raises -> Self:
+    def move_to(var self, dev: Device) raises -> Self:
         """Returns self if already allocated on dev, otherwise copy the contents
         of self to dev.
 
@@ -60,41 +62,41 @@ trait DeviceBuffer:
         """
         ...
 
-    fn unsafe_ptr(self) -> UnsafePointer[UInt8]:
+    def unsafe_ptr(self) -> UnsafePointer[UInt8, MutUntrackedOrigin]:
         """Returns a pointer to the DeviceBuffer's storage in device memory."""
         ...
 
-    fn device(self) -> Device:
+    def device(self) -> Device:
         """Returns the Device on which the DeviceBuffer was allocated."""
         ...
 
-    fn bytecount(self) -> Int:
+    def bytecount(self) -> Int:
         """Returns the size of the DeviceBuffer in bytes."""
         ...
 
 
 struct DeviceMemory(
-    DeviceBuffer, StringableRaising, Copyable, Movable, Writable
+    DeviceBuffer, Copyable, Movable, Writable
 ):
     """DeviceMemory is an owning buffer allocated on a (possibly non-CPU) Device.
     """
 
-    var _impl_ptr: UnsafePointer[NoneType]
+    var _impl_ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
     var _device: Device
     var name: Optional[String]
     var num_bytes: Int
 
-    fn __init__(out self):
+    def __init__(out self):
         """Constructs a DeviceMemory object in a state that is only valid for deletion.
         Can be used to represent a `moved from` state.
         """
         self = Self(
-            UnsafePointer[NoneType](),
+            null_ptr[NoneType](),
             0,
             Device(),
         )
 
-    fn __init__(
+    def __init__(
         out self,
         num_bytes: Int,
         device: Device,
@@ -108,12 +110,12 @@ struct DeviceMemory(
             name: Optional name for the DeviceMemory.
 
         """
-        self._device = device
+        self._device = device.copy()
         var tmp_spec = TensorSpec(DType.uint8, num_bytes)
         var status = Status(device._lib.value())
         # CAUTION: this assumes that TensorSpec is bitwise identical in mojo and cpp
         self._impl_ptr = device._lib.value().create_device_memory_fn(
-            UnsafePointer[TensorSpec](to=tmp_spec),
+            UnsafePointer(to=tmp_spec).unsafe_origin_cast[MutUntrackedOrigin](),
             self._device._cdev._ptr,
             status.impl,
         )
@@ -122,43 +124,28 @@ struct DeviceMemory(
         self.name = name
         self.num_bytes = num_bytes
 
-    @doc_private
-    fn __init__(
+    def __init__(
         out self,
-        owned_impl_ptr: UnsafePointer[NoneType],
+        owned_impl_ptr: UnsafePointer[NoneType, MutUntrackedOrigin],
         num_bytes: Int,
         device: Device,
         name: Optional[String] = None,
     ):
-        self._device = device
+        self._device = device.copy()
         self._impl_ptr = owned_impl_ptr
         self.name = name
         self.num_bytes = num_bytes
 
-    fn __copyinit__(out self, existing: Self):
-        # This temporarily exists so that we can store DeviceMemory in a List
-        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
-        # can be removed
-        constrained[
-            False, "__copyinit__ not supported on DeviceMemory, MSTDL-467"
-        ]()
-        self._impl_ptr = existing._impl_ptr
-        self._device = existing._device
-        self.name = existing.name
-        self.num_bytes = existing.num_bytes
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn __init__[
+    def __init__[
         type: DType, rank: Int
-    ](out self, owned tensor: Tensor[type, rank]) raises:
+    ](out self, var tensor: Tensor[type, rank]) raises:
         """Creates a DeviceMemory from the existing `tensor` storage.
 
         Args:
@@ -169,9 +156,9 @@ struct DeviceMemory(
         self.name = tensor.name
         self.num_bytes = tensor.spec().bytecount()
         self._impl_ptr = tensor._device_memory_impl_ptr
-        tensor._device_memory_impl_ptr = UnsafePointer[NoneType]()
+        tensor._device_memory_impl_ptr = null_ptr[NoneType]()
 
-    fn __init__(out self, owned anytensor: AnyTensor) raises:
+    def __init__(out self, var anytensor: AnyTensor) raises:
         """Creates a device tensor the existing `anytensor` storage.
 
         Args:
@@ -179,47 +166,47 @@ struct DeviceMemory(
 
         """
 
-        self._device = anytensor._device
+        self._device = anytensor._device.copy()
         self.name = anytensor._name
         self._impl_ptr = anytensor._device_memory_impl_ptr
         self.num_bytes = anytensor._spec.bytecount()
-        anytensor._device_memory_impl_ptr = UnsafePointer[NoneType]()
+        anytensor._device_memory_impl_ptr = null_ptr[NoneType]()
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """De-allocate and destroy the DeviceMemory.
 
         Note: this will also decrement the refcount on the Device used to allocate
         the DeviceMemory.
         """
-        if not self._impl_ptr:
+        if Int(self._impl_ptr) == 0:
             return
         self._device._lib.value().destroy_device_memory_fn(self._impl_ptr)
 
-    fn bytecount(self) -> Int:
+    def bytecount(self) -> Int:
         """Returns the number of bytes in the DeviceMemory."""
         return self.num_bytes
 
-    fn get_device(self) -> Device:
+    def get_device(self) -> Device:
         """Returns the device on which the DeviceMemory was allocated."""
 
-        return self._device
+        return self._device.copy()
 
-    fn device(self) -> Device:
+    def device(self) -> Device:
         """Returns the device on which the DeviceMemory was allocated."""
 
-        return self._device
+        return self._device.copy()
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self._impl_ptr = existing._impl_ptr
         self._device = existing._device^
         self.name = existing.name^
         self.num_bytes = existing.num_bytes
 
-    fn __str__(self) raises -> String:
+    def __str__(self) raises -> String:
         """Returns a description of the DeviceMemory."""
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats a description of the DeviceMemory to the provided Writer.
 
@@ -239,15 +226,15 @@ struct DeviceMemory(
             "))",
         )
 
-    fn _steal_impl_ptr(owned self) -> UnsafePointer[NoneType]:
+    def _steal_impl_ptr(var self) -> UnsafePointer[NoneType, MutUntrackedOrigin]:
         var tmp = self._impl_ptr
-        self._impl_ptr = UnsafePointer[NoneType]()
+        self._impl_ptr = null_ptr[NoneType]()
         return tmp
 
-    fn _steal_ptr(owned self) -> UnsafePointer[UInt8]:
-        alias func_name_take_data = "M_takeDataFromDeviceMemory"
+    def _steal_ptr(var self) -> UnsafePointer[UInt8]:
+        comptime func_name_take_data = "M_takeDataFromDeviceMemory"
         var take_data_func = self._device._lib.value().get_handle().get_function[
-            fn (UnsafePointer[NoneType]) -> UnsafePointer[UInt8]
+            def (UnsafePointer[NoneType]) thin abi("C") -> UnsafePointer[UInt8]
         ](
             func_name_take_data
         )
@@ -256,7 +243,7 @@ struct DeviceMemory(
         _ = self^
         return data
 
-    fn copy_into(self, mut dst_memory: DeviceMemory) raises:
+    def copy_into(self, mut dst_memory: DeviceMemory) raises:
         """Copies the contents of self into preallocated DeviceMemory.
 
         Args:
@@ -275,7 +262,7 @@ struct DeviceMemory(
         if status:
             raise String(status)
 
-    fn copy_to(
+    def copy_to(
         self, dev: Device, name: Optional[String] = None
     ) raises -> DeviceMemory:
         """Copies the contents of self into DeviceMemory allocated on dev.
@@ -298,7 +285,7 @@ struct DeviceMemory(
         self.copy_into(dst)
         return dst^
 
-    fn move_to(owned self, dev: Device) raises -> Self:
+    def move_to(var self, dev: Device) raises -> Self:
         """Returns self if already allocated on dev, otherwise copy the contents
         of self to dev.
 
@@ -313,7 +300,7 @@ struct DeviceMemory(
         else:
             return self.copy_to(dev)
 
-    fn unsafe_ptr(self) -> UnsafePointer[UInt8]:
+    def unsafe_ptr(self) -> UnsafePointer[UInt8, MutUntrackedOrigin]:
         """Returns a pointer to the underlying device memory.
 
         Note: The caller is responsible for ensuring that the returned pointer
@@ -322,21 +309,21 @@ struct DeviceMemory(
 
         return self._device._lib.value().get_data_fn(self._impl_ptr)
 
-    fn take(mut self) raises -> Self:
+    def take(mut self) raises -> Self:
         """Takes and returns the contents of `self`, leaving `self` in an empty but destructible state.
         """
         var tmp = Self()
         swap(tmp, self)
-        return tmp
+        return tmp.copy()
 
 
 struct DeviceTensor(
-    DeviceBuffer, StringableRaising, Copyable, Movable, Writable
+    DeviceBuffer, Copyable, Movable, Writable
 ):
     var _storage: DeviceMemory
     var spec: TensorSpec
 
-    fn __init__(
+    def __init__(
         out self, spec: TensorSpec, device: Device, name: Optional[String]
     ) raises:
         """Allocates a DeviceTensor in the Device's address space.
@@ -347,21 +334,21 @@ struct DeviceTensor(
             name: Optional name for the DeviceMemory.
 
         """
-        self.spec = spec
+        self.spec = spec.copy()
         self._storage = DeviceMemory(
             spec.bytecount(),
             device,
             name,
         )
 
-    fn __init__(out self):
+    def __init__(out self):
         """Constructs a DeviceTensor in a state that is only valid for deletion.
         Can be used to represent a `moved from` state.
         """
         self.spec = TensorSpec()
         self._storage = DeviceMemory()
 
-    fn __init__(out self, owned storage: DeviceMemory, spec: TensorSpec) raises:
+    def __init__(out self, var storage: DeviceMemory, spec: TensorSpec) raises:
         """Constructs a DeviceTensor from an existing storage buffer and spec.
 
         Args:
@@ -369,12 +356,12 @@ struct DeviceTensor(
             spec: TensorSpec describing the type and shape of the DeviceTensor.
         """
         self._storage = storage^
-        self.spec = spec
+        self.spec = spec.copy()
 
         if self.bytecount() != self.bytecount():
             raise "DeviceMemory size does not match DeviceTensor requirements"
 
-    fn copy_to(self, dev: Device, name: Optional[String] = None) raises -> Self:
+    def copy_to(self, dev: Device, name: Optional[String] = None) raises -> Self:
         """Copies the contents of self into a DeviceTensor allocated on dev.
         Note: this function allocates memory on dev.
 
@@ -389,9 +376,9 @@ struct DeviceTensor(
             If the DeviceTensor is backed by the same Device object as dev.
         """
         var t = Self(self._storage.copy_to(dev, name), self.spec)
-        return t
+        return t.copy()
 
-    fn copy_into(self, mut dst_tensor: Self) raises:
+    def copy_into(self, mut dst_tensor: Self) raises:
         """Copies the contents of self into a preallocated DeviceTensor.
 
         Args:
@@ -403,7 +390,7 @@ struct DeviceTensor(
             ).format(self.spec, dst_tensor.spec)
         self._storage.copy_into(dst_tensor._storage)
 
-    fn move_to(owned self, dev: Device) raises -> Self:
+    def move_to(var self, dev: Device) raises -> Self:
         """Returns self if already allocated on dev, otherwise copy the contents
         of self to dev.
 
@@ -418,13 +405,13 @@ struct DeviceTensor(
         else:
             return self.copy_to(dev)
 
-    fn unsafe_ptr(self) -> UnsafePointer[UInt8]:
+    def unsafe_ptr(self) -> UnsafePointer[UInt8, MutUntrackedOrigin]:
         """Returns a pointer to the DeviceTensor's storage in device memory."""
         return self._storage.unsafe_ptr()
 
-    fn to_tensor[
+    def to_tensor[
         type: DType, rank: Int
-    ](owned self) raises -> Tensor[type, rank]:
+    ](var self) raises -> Tensor[type, rank]:
         """Returns a Tensor created using the DeviceTensor's shape and storage.
         """
         if rank != self.spec.rank():
@@ -435,42 +422,30 @@ struct DeviceTensor(
 
         return Tensor[type, rank](device_tensor=self^)
 
-    fn device(self) -> Device:
+    def device(self) -> Device:
         """Returns the Device on which the DeviceTensor was allocated."""
         return self._storage.device()
 
-    fn name(self) -> Optional[String]:
+    def name(self) -> Optional[String]:
         """Returns the name of the DeviceTensor."""
         return self._storage.name
 
-    fn __copyinit__(out self, existing: Self):
-        # This temporarily exists so that we can store DeviceMemory in a List
-        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
-        # can be removed
-        constrained[
-            False, "__copyinit__ not supported on DeviceTensor, MSTDL-467"
-        ]()
-        self._storage = existing._storage
-        self.spec = existing.spec
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self._storage = existing._storage^
         self.spec = existing.spec^
 
-    fn __str__(self) raises -> String:
+    def __str__(self) raises -> String:
         """Returns a descriptor for the DeviceTensor."""
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats a description of the DeviceTensor to the provided Writer.
 
@@ -490,11 +465,11 @@ struct DeviceTensor(
             "))",
         )
 
-    fn bytecount(self) -> Int:
+    def bytecount(self) -> Int:
         """Returns the number of bytes in the DeviceTensor."""
         return self.spec.bytecount()
 
-    fn take(mut self) -> Self:
+    def take(mut self) -> Self:
         """Takes and returns the contents of `self`, leaving `self` in an empty but destructible state.
         """
         var tmp = Self()

@@ -12,7 +12,4 @@
 # ===----------------------------------------------------------------------=== #
 """The root package for the compiler module in MAX."""
 
-from compiler import (
-    StaticTensorSpec,
-    register,
-)
+# (MAX custom-op compiler re-exports removed in the Mojo 1.0 port)

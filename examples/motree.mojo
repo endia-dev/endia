@@ -11,12 +11,12 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
-from time import perf_counter
+import std.math as math
+from std.time import perf_counter
 import nabla
 
 
-fn test_motree() raises:
+def test_motree() raises:
     var tree = nabla.motree(
         (
             String("params"),
@@ -46,10 +46,10 @@ fn test_motree() raises:
         print(leaf[])
 
 
-fn test_motree_func() raises:
-    fn foo(args: nabla.MoTree) raises -> nabla.MoTree:
-        var params = args["params"][List[nabla.Array]]
-        var grads = args["grads"][List[nabla.Array]]
+def test_motree_func() raises:
+    def foo(args: nabla.MoTree) raises -> nabla.MoTree:
+        var params = args["params"][List[nabla.Array]].copy()
+        var grads = args["grads"][List[nabla.Array]].copy()
 
         var updated_params = List[nabla.Array]()
         for i in range(len(params)):
@@ -57,9 +57,9 @@ fn test_motree_func() raises:
             updated_params.append(updated_param)
 
         var outputs = nabla.motree(
-            (String("params"), updated_params),
+            (String("params"), updated_params.copy()),
         )
-        return outputs
+        return outputs.copy()
 
     var params = List[nabla.Array]()
     var grads = List[nabla.Array]()
@@ -69,8 +69,8 @@ fn test_motree_func() raises:
         grads.append(nabla.arange((2, 4)))
 
     var args = nabla.motree(
-        (String("params"), params),
-        (String("grads"), grads),
+        (String("params"), params.copy()),
+        (String("grads"), grads.copy()),
     )
 
     var outputs = foo(args)

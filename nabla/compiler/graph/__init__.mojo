@@ -63,3 +63,5 @@ from .error import error, format_error
 from .graph import Graph
 from .symbol import Symbol
 from .type import Dim, ListType, StaticDim, TensorType, Type, _OpaqueType
+
+from . import ops as ops

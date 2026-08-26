@@ -11,28 +11,28 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from collections import Dict
+import nabla.compiler as compiler
+from std.collections import Dict
 
 from nabla.core.device_array import DeviceArray, ArrayImpl
 from nabla.ops.utils import register_any_op, RuntimeInfo
 from nabla.ops.view_ops import squeeze, broadcast_to
 
-alias BATCH_DIM_CTR = 0
-alias ORIGINALshape = 2
-alias AXES = 3
-alias KEEP_DIM = 4
-alias ORIGINAL_AXES = 5
-alias ACT_ON_BATCH_DIMS = 6
+comptime BATCH_DIM_CTR = 0
+comptime ORIGINALshape = 2
+comptime AXES = 3
+comptime KEEP_DIM = 4
+comptime ORIGINAL_AXES = 5
+comptime ACT_ON_BATCH_DIMS = 6
 
 
 struct Sum:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
-        var axes = array.impl[].runtime_info[AXES]
-        var originalshape = array.impl[].runtime_info[ORIGINALshape]
+        var axes = array.impl[].runtime_info[AXES].copy()
+        var originalshape = array.impl[].runtime_info[ORIGINALshape].copy()
         var symbol = args[0]
 
         for i in range(len(axes)):
@@ -42,38 +42,38 @@ struct Sum:
         return symbol
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Sum"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
         var act_on_batch_dims = True if array.impl[].runtime_info[
             ACT_ON_BATCH_DIMS
         ][0] == 1 else False
-        var originalshape = array.impl[].runtime_info[ORIGINALshape]
-        var target_shape = originalshape
-        return List(
+        var originalshape = array.impl[].runtime_info[ORIGINALshape].copy()
+        var target_shape = originalshape.copy()
+        return [
             broadcast_to(
                 tangent,
                 target_shape,
                 act_on_batch_dims=act_on_batch_dims,
                 expand_dims=False,
             )
-        )
+        ]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
     ) raises -> DeviceArray:
-        var runtime_info = array.impl[].runtime_info
+        var runtime_info = array.impl[].runtime_info.copy()
         var act_on_batch_dims = True if runtime_info[ACT_ON_BATCH_DIMS][
             0
         ] == 1 else False
-        var axes = array.impl[].runtime_info[ORIGINAL_AXES]
+        var axes = array.impl[].runtime_info[ORIGINAL_AXES].copy()
         return sum(
             tangents[0],
             axes,
@@ -82,7 +82,7 @@ struct Sum:
         )
 
 
-fn sum(
+def sum(
     arg: DeviceArray,
     _axis: List[Int] = List[Int](),
     keep_dim: Bool = False,
@@ -96,7 +96,7 @@ fn sum(
         return arg
 
     var arg_shape = arg.shape()[batch_dim_ctr:]
-    var axes = _axis
+    var axes = _axis.copy()
 
     if len(axes) == 0:
         for i in range(-len(arg_shape), 0):
@@ -106,10 +106,10 @@ fn sum(
             axes[i] = axes[i] if axes[i] < 0 else -len(arg_shape) + axes[i]
     sort(axes)
 
-    var target_shape = arg.shape()[:batch_dim_ctr]
+    var target_shape = List(arg.shape()[:batch_dim_ctr])
     for i in range(-len(arg_shape), 0):
         if i not in axes:
-            target_shape.append(arg_shape[i])
+            target_shape.append(arg_shape[len(arg_shape) + i])
         else:
             target_shape.append(1)
 
@@ -117,20 +117,20 @@ fn sum(
         target_shape.append(1)
 
     var runtime_info = RuntimeInfo(7)
-    runtime_info[ORIGINAL_AXES] = _axis
-    runtime_info[AXES] = axes
-    runtime_info[ORIGINALshape] = arg_shape
-    runtime_info[KEEP_DIM] = List[Int](1) if keep_dim else List[Int](0)
-    runtime_info[BATCH_DIM_CTR] = List(batch_dim_ctr)
-    runtime_info[ACT_ON_BATCH_DIMS] = List(1) if act_on_batch_dims else List(0)
-    var name = "sum(" + axes.__str__() + ")"
+    runtime_info[ORIGINAL_AXES] = _axis.copy()
+    runtime_info[AXES] = axes.copy()
+    runtime_info[ORIGINALshape] = List(arg_shape)
+    runtime_info[KEEP_DIM] = [1] if keep_dim else [0]
+    runtime_info[BATCH_DIM_CTR] = [batch_dim_ctr]
+    runtime_info[ACT_ON_BATCH_DIMS] = [1] if act_on_batch_dims else [0]
+    var name = "sum(" + String(axes) + ")"
     var res = register_any_op[Sum.maxpr, Sum.vjp, Sum.jvp, Sum.eagerxpr](
-        List(arg), name, target_shape, runtime_info=runtime_info
+        [arg], name, target_shape, runtime_info=runtime_info
     )
     if not keep_dim:
         if len(axes) == len(target_shape):
-            axes = axes[:-1]
+            _ = axes.pop()
         for i in range(len(axes)):
-            res = squeeze(res, List(axes[i]), act_on_batch_dims)
+            res = squeeze(res, [axes[i]], act_on_batch_dims)
 
     return res

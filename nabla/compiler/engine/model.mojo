@@ -14,9 +14,9 @@
 Defines the `Model` type that holds a model ready for execution.
 """
 
-from sys.ffi import DLHandle
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import call_dylib_func, exchange
+from nabla.compiler._utils import mut_ptr, null_ptr, call_dylib_func, exchange
 from nabla.compiler.driver import (
     AnyMemory,
     AnyMojoValue,
@@ -27,8 +27,8 @@ from nabla.compiler.driver import (
 )
 from nabla.compiler.driver._utils import _steal_device_memory_impl_ptr
 from nabla.compiler.tensor import Tensor, TensorSpec
-from memory import UnsafePointer
-from python import PythonObject
+from std.memory import UnsafePointer
+from std.python import PythonObject
 
 from ._compilation import CompiledModel
 from ._context import CRuntimeContext
@@ -37,8 +37,8 @@ from ._status import CStatus, Status
 from .tensor_map import CTensorMap
 
 
-@value
-struct Model:
+@fieldwise_init
+struct Model(Copyable, Movable):
     """Represents a model that's loaded and ready for execution.
 
     Do not instantiate this object directly. Instead, create it with
@@ -63,29 +63,29 @@ struct Model:
     var _compiled_model: CompiledModel
     var _device: Device
 
-    alias _InitModelFnName = "M_initModel"
-    alias _ExecuteFnName = "M_executeModelSync"
+    comptime _InitModelFnName = "M_initModel"
+    comptime _ExecuteFnName = "M_executeModelSync"
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move initializer for model.
 
         Args:
           existing: Model to move.
         """
         self._ctx = existing._ctx
-        self._ptr = exchange[CModel](existing._ptr, UnsafePointer[NoneType]())
+        self._ptr = exchange[CModel](existing._ptr, null_ptr[NoneType]())
         self._lib = existing._lib
         self._session = existing._session^
         self._compiled_model = existing._compiled_model^
         self._device = existing._device^
 
-    fn _add_tensor_to_output_list(
+    def _add_tensor_to_output_list(
         self,
-        list: UnsafePointer[NoneType],
-        device_memory_ptr: UnsafePointer[NoneType],
-        spec_ptr: UnsafePointer[NoneType],
+        list: UnsafePointer[NoneType, MutUntrackedOrigin],
+        device_memory_ptr: UnsafePointer[NoneType, MutUntrackedOrigin],
+        spec_ptr: UnsafePointer[NoneType, MutUntrackedOrigin],
     ) raises:
-        var spec = spec_ptr.bitcast[TensorSpec]()[]
+        var spec = spec_ptr.bitcast[TensorSpec]()[].copy()
         var device_memory = DeviceTensor(
             DeviceMemory(device_memory_ptr, spec.bytecount(), self._device),
             spec,
@@ -93,15 +93,15 @@ struct Model:
         var typed_list = list.bitcast[List[AnyMemory]]()
         typed_list[].append(device_memory^)
 
-    fn _add_value_to_output_list(
+    def _add_value_to_output_list(
         self,
-        list: UnsafePointer[NoneType],
+        list: UnsafePointer[NoneType, MutUntrackedOrigin],
         value: AnyMojoValue.c_type,
     ) raises:
         var typed_list = list.bitcast[List[AnyMemory]]()
         typed_list[].append(AnyMojoValue(value))
 
-    fn execute(self, inputs: TensorMap) raises -> TensorMap:
+    def execute(self, inputs: TensorMap) raises -> TensorMap:
         """Execute model with given inputs.
 
         Args:
@@ -120,10 +120,10 @@ struct Model:
             status.borrow_ptr(),
         )
         if status:
-            raise status.__str__()
+            raise String(status)
         return TensorMap(outputs, self._lib, self._session)
 
-    fn execute(self, inputs: PythonObject) raises -> TensorMap:
+    def execute(self, inputs: PythonObject) raises -> TensorMap:
         """Execute model with given inputs.
 
         Args:
@@ -139,7 +139,7 @@ struct Model:
             input_map.borrow(String(py_pair[0]), EngineNumpyView(py_pair[1]))
         return self.execute(input_map)
 
-    fn execute(self, *inputs: NamedTensor) raises -> TensorMap:
+    def execute(self, *inputs: NamedTensor) raises -> TensorMap:
         """Execute model with given inputs.
 
         Args:
@@ -151,13 +151,13 @@ struct Model:
         var input_map = TensorMap(self._ctx, self._lib, self._session)
 
         for named_tensor in inputs:
-            input_map.borrow(named_tensor[].name, named_tensor[]._view)
+            input_map.borrow(named_tensor.name, named_tensor._view)
 
         var result = self.execute(input_map)
 
         return result^
 
-    fn execute[
+    def execute[
         type: DType
     ](self, name: String, input: Tensor[type]) raises -> TensorMap:
         """Execute model with given input.
@@ -176,7 +176,7 @@ struct Model:
         input_map.borrow(name, input)
         return self.execute(input_map)
 
-    fn execute(self, name: String, mut input: PythonObject) raises -> TensorMap:
+    def execute(self, name: String, mut input: PythonObject) raises -> TensorMap:
         """Execute model with given input.
 
         Args:
@@ -190,7 +190,7 @@ struct Model:
         input_map.borrow(name, EngineNumpyView(input))
         return self.execute(input_map)
 
-    fn execute[
+    def execute[
         type1: DType, type2: DType
     ](
         self,
@@ -219,7 +219,7 @@ struct Model:
         input_map.borrow(name2, input2)
         return self.execute(input_map)
 
-    fn execute(
+    def execute(
         self,
         name1: String,
         mut input1: PythonObject,
@@ -242,7 +242,7 @@ struct Model:
         input_map.borrow(name2, EngineNumpyView(input2))
         return self.execute(input_map)
 
-    fn execute[
+    def execute[
         type1: DType, type2: DType, type3: DType
     ](
         self,
@@ -277,7 +277,7 @@ struct Model:
         input_map.borrow(name3, input3)
         return self.execute(input_map)
 
-    fn execute(
+    def execute(
         self,
         name1: String,
         mut input1: PythonObject,
@@ -305,7 +305,7 @@ struct Model:
         input_map.borrow(name3, EngineNumpyView(input3))
         return self.execute(input_map)
 
-    fn execute(self, owned *inputs: AnyMemory) raises -> List[AnyMemory]:
+    def execute(self, var *inputs: AnyMemory) raises -> List[AnyMemory]:
         """Execute model with the given inputs.
 
         Arguments:
@@ -323,13 +323,13 @@ struct Model:
         var on_device_inputs = List[AnyTensor]()
         var values_impl = List[AnyMojoValue.c_type]()
         var has_seen_opaque = False
-        for input in inputs:
-            if input[].is_tensor():
+        for ref input in inputs:
+            if input.is_tensor():
                 # FIXME(MSDK-791): Remove this restriction.
                 if has_seen_opaque:
                     raise "all opaque inputs should come after tensor inputs."
 
-                var tensor = input[].take_tensor()
+                var tensor = input.take_tensor()
                 if tensor._device == self._session._ptr[].device:
                     on_device_inputs.append(tensor^)
                 else:
@@ -338,80 +338,38 @@ struct Model:
                             self._session._ptr[].device
                         )
                     )
-                    on_device_inputs.append(input_dt)
+                    on_device_inputs.append(input_dt.copy())
             else:
                 has_seen_opaque = True
-                values_impl.append(input[].take_value().release())
+                values_impl.append(input.take_value().release())
 
-        var on_device_inputs_impl = List[UnsafePointer[NoneType]]()
+        var on_device_inputs_impl = List[UnsafePointer[NoneType, MutUntrackedOrigin]]()
         var inputs_spec = List[TensorSpec]()
-        for input in on_device_inputs:
-            inputs_spec.append(input[]._spec)
+        for ref input in on_device_inputs:
+            inputs_spec.append(input._spec.copy())
             on_device_inputs_impl.append(
-                _steal_device_memory_impl_ptr(input[].take())
+                _steal_device_memory_impl_ptr(input.take())
             )
 
-        alias execute_func_name = "M_executeDeviceTensor"
+        comptime execute_func_name = "M_executeDeviceTensor"
 
         var output_list = List[AnyMemory]()
         output_list.reserve(self.num_model_outputs())
         var output_list_address = UnsafePointer(to=output_list)
         var status = Status(self._lib)
 
-        # FIXME: This has too many arguments now. Refactor this into something
-        # cleaner.
-        var execute_func = self._lib.get_function[
-            fn (
-                CRuntimeContext,
-                CModel,
-                UnsafePointer[
-                    UnsafePointer[NoneType]
-                ],  # UnsafePointer to input tensors
-                UnsafePointer[TensorSpec],  # UnsafePointer to input specs
-                Int,  # Number of input specs
-                UnsafePointer[
-                    AnyMojoValue.c_type
-                ],  # UnsafePointer to opaque mojo values
-                Int,  # Number of opaque mojo values
-                __type_of(
-                    Self._add_tensor_to_output_list
-                ),  # Function pointer to add tensor to output
-                __type_of(
-                    Self._add_value_to_output_list
-                ),  # Function pointer to add opaque value to output,
-                UnsafePointer[Self],  # Calling context
-                UnsafePointer[NoneType],  # UnsafePointer to output list
-                CStatus,
-            ) -> Int
-        ](execute_func_name)
-        var output_count = execute_func(
-            self._ctx,
-            self._ptr,
-            on_device_inputs_impl.unsafe_ptr(),
-            inputs_spec.unsafe_ptr(),
-            len(on_device_inputs_impl),
-            values_impl.unsafe_ptr(),
-            len(values_impl),
-            Self._add_tensor_to_output_list,
-            Self._add_value_to_output_list,
-            UnsafePointer(to=self),
-            output_list_address.bitcast[NoneType](),
-            status.borrow_ptr(),
-        )
-
-        if status:
-            raise String(status)
-
-        if len(output_list) != output_count:
-            raise "internal error: mismatch on output count during ffi"
+        # Mojo 1.0 port: the M_executeDeviceTensor FFI call used nested
+        # callback function-pointer types that crash the Mojo 1.0 compiler,
+        # and the MAX 25.3 engine runtime it targets is unavailable anyway.
+        raise "MAX engine execution (M_executeDeviceTensor) is unavailable in the Mojo 1.0 port"
 
         # Make sure inputs are alive
         _ = on_device_inputs_impl^
         _ = inputs_spec^
         _ = values_impl^
-        return output_list
+        return output_list^
 
-    fn num_model_inputs(self) raises -> Int:
+    def num_model_inputs(self) raises -> Int:
         """Gets the number of inputs of the model.
 
         Returns:
@@ -420,7 +378,7 @@ struct Model:
 
         return self._compiled_model.num_model_inputs()
 
-    fn get_model_input_names(self) raises -> List[String]:
+    def get_model_input_names(self) raises -> List[String]:
         """Gets the names of model inputs.
 
         Returns:
@@ -429,7 +387,7 @@ struct Model:
 
         return self._compiled_model.get_model_input_names()
 
-    fn num_model_outputs(self) raises -> Int:
+    def num_model_outputs(self) raises -> Int:
         """Gets the number of outputs of the model.
 
         Returns:
@@ -438,7 +396,7 @@ struct Model:
 
         return self._compiled_model.num_model_outputs()
 
-    fn get_model_output_names(self) raises -> List[String]:
+    def get_model_output_names(self) raises -> List[String]:
         """Gets the names of model outputs.
 
         Returns:
@@ -446,7 +404,7 @@ struct Model:
         """
         return self._compiled_model.get_model_output_names()
 
-    fn get_model_input_metadata(self) raises -> List[EngineTensorSpec]:
+    def get_model_input_metadata(self) raises -> List[EngineTensorSpec]:
         """Get metadata about the model's input tensors, as a list of
         [`EngineTensorSpec`](/max/api/mojo/engine/tensor_spec/EngineTensorSpec)
         objects.
@@ -456,7 +414,7 @@ struct Model:
         """
         return self._compiled_model.get_model_input_metadata()
 
-    fn get_model_output_metadata(self) raises -> List[EngineTensorSpec]:
+    def get_model_output_metadata(self) raises -> List[EngineTensorSpec]:
         """Get metadata about the model's output tensors, as a list of
         [`EngineTensorSpec`](/max/api/mojo/engine/tensor_spec/EngineTensorSpec)
         objects.
@@ -466,14 +424,14 @@ struct Model:
         """
         return self._compiled_model.get_model_output_metadata()
 
-    fn export_compiled_model(self, path: String) raises:
+    def export_compiled_model(self, path: String) raises:
         """Exports a compiled model as a MEF to a given path.
         Args:
           path: The path of the MEF file to export.
         """
         self._compiled_model.export_compiled_model(self._lib, path)
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for Model."""
         self._ptr.free(self._lib)
         _ = self._compiled_model^

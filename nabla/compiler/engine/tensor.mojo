@@ -17,12 +17,12 @@ when executing a model.
 You can pass each of the types shown here to
 [`Model.execute()`](/max/api/mojo/engine/model/Model#execute).
 """
-from collections import List
+from std.collections import List
 
 from nabla.compiler.tensor import Tensor
-from memory import ArcPointer, UnsafePointer
-from memory.unsafe import bitcast
-from python import Python, PythonObject
+from std.memory import ArcPointer, UnsafePointer
+from std.memory.unsafe import bitcast
+from std.python import Python, PythonObject
 
 from ._tensor_impl import CTensor, _Numpy
 from .tensor_spec import TensorSpec
@@ -31,21 +31,21 @@ from .tensor_spec import TensorSpec
 struct _OwningPointer(Movable):
     """A type that deallocates the specified pointer when it is destroyed."""
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = existing.ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.ptr.free()
 
 
-@value
-struct NamedTensor:
+@fieldwise_init
+struct NamedTensor(Copyable, Movable):
     """A named input tensor."""
 
     var name: String
@@ -54,9 +54,9 @@ struct NamedTensor:
     """Reference-counted pointer keeping the tensor data alive."""
     var _view: EngineTensorView
 
-    fn __init__[
+    def __init__[
         dtype: DType
-    ](out self, owned name: String, owned tensor: Tensor[dtype]):
+    ](out self, var name: String, var tensor: Tensor[dtype]):
         """Creates a `NamedTensor` owning the tensor with a reference count.
 
         Parameters:
@@ -77,15 +77,16 @@ struct NamedTensor:
         # alive and us copyable.  We don't care what `dtype` is, and don't want
         # NamedTensor to have to be generic on `dtype`.
         self._tensor_data = ArcPointer(
-            _OwningPointer(tensor._take_data_ptr().bitcast[NoneType]())
+            _OwningPointer(tensor.copy()._take_data_ptr().bitcast[NoneType]().copy())
         )
 
-        # FIXME(MSDK-230): This is leaking tensors.
-        self._tensor_data._inner[].add_ref()
+        # FIXME(MSDK-230): upstream leaked tensors here via a manual
+        # add_ref; ArcPointer internals changed in Mojo 1.0, and the leak
+        # workaround is dropped in this port.
 
 
-@value
-struct EngineTensorView:
+@fieldwise_init
+struct EngineTensorView(Copyable, Movable):
     """A non-owning register_passable view of a tensor
     that does runtime type checking.
 
@@ -93,11 +94,11 @@ struct EngineTensorView:
     """
 
     var _spec: TensorSpec
-    var _data_ptr: UnsafePointer[NoneType]
+    var _data_ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
     var _dtype: DType
 
     @implicit
-    fn __init__[type: DType](out self, tensor: Tensor[type]):
+    def __init__[type: DType](out self, tensor: Tensor[type]):
         """Creates a non-owning view of given Tensor.
 
         Parameters:
@@ -106,11 +107,11 @@ struct EngineTensorView:
         Args:
             tensor: Tensor backing the view.
         """
-        self._spec = tensor._spec
+        self._spec = tensor._spec.copy()
         self._data_ptr = tensor.unsafe_ptr().bitcast[NoneType]()
         self._dtype = type
 
-    fn data[type: DType](self) raises -> UnsafePointer[Scalar[type]]:
+    def data[type: DType](self) raises -> UnsafePointer[Scalar[type]]:
         """Returns pointer to the start of tensor.
 
         Parameters:
@@ -123,10 +124,10 @@ struct EngineTensorView:
             If the given type does not match the type of tensor.
         """
         if type != self._dtype:
-            raise String("Expected type: ") + self._dtype.__str__()
+            raise String("Expected type: ") + String(self._dtype)
         return self._data_ptr.bitcast[Scalar[type]]()
 
-    fn unsafe_ptr(self) -> UnsafePointer[NoneType]:
+    def unsafe_ptr(self) -> UnsafePointer[NoneType, MutUntrackedOrigin]:
         """Returns type erased pointer to the start of tensor.
 
         Returns:
@@ -134,19 +135,18 @@ struct EngineTensorView:
         """
         return self._data_ptr
 
-    fn spec(self) -> TensorSpec:
+    def spec(self) -> TensorSpec:
         """Returns the spec of tensor backing the view.
 
         Returns:
             Stdlib TensorSpec of the tensor.
         """
 
-        return self._spec
+        return self._spec.copy()
 
 
-@value
-@register_passable
-struct EngineNumpyView:
+@fieldwise_init
+struct EngineNumpyView(RegisterPassable, ImplicitlyCopyable):
     """A register_passable view of a numpy array.
 
     Keeps its own reference to the NumPy PythonObject, so there is no need to
@@ -156,7 +156,7 @@ struct EngineNumpyView:
     var _np: _Numpy
     var _obj: PythonObject
 
-    fn __init__(out self, tensor: PythonObject) raises:
+    def __init__(out self, tensor: PythonObject) raises:
         """Creates a non-owning view of given numpy array.
 
         Args:
@@ -165,17 +165,17 @@ struct EngineNumpyView:
         self._np = _Numpy()
         self._obj = tensor
 
-    fn unsafe_ptr(self) raises -> UnsafePointer[NoneType]:
+    def unsafe_ptr(self) raises -> UnsafePointer[NoneType, MutUntrackedOrigin]:
         """Returns type erased pointer to the start of numpy array.
 
         Returns:
             UnsafePointer of given type.
         """
-        return rebind[UnsafePointer[NoneType]](
-            self._obj.ctypes.data.unsafe_get_as_pointer[DType.invalid]()
+        return rebind[UnsafePointer[NoneType, MutUntrackedOrigin]](
+            self._obj.ctypes.data.unsafe_get_as_pointer[DType.uint8]()
         )
 
-    fn dtype(self) raises -> DType:
+    def dtype(self) raises -> DType:
         """Get DataType of the array backing the view.
 
         Returns:
@@ -209,7 +209,7 @@ struct EngineNumpyView:
 
         raise "Unknown datatype"
 
-    fn spec(self) raises -> TensorSpec:
+    def spec(self) raises -> TensorSpec:
         """Returns the spec of numpy array backing the view.
 
         Returns:
@@ -218,38 +218,38 @@ struct EngineNumpyView:
 
         @always_inline
         @parameter
-        fn get_spec[ty: DType]() raises -> TensorSpec:
-            var shape = List[Int, hint_trivial_type=True]()
+        def get_spec[ty: DType]() raises -> TensorSpec:
+            var shape = List[Int]()
             var array_shape = self._obj.shape
             for dim in array_shape:
-                shape.append(Int(dim))
+                shape.append(Int(py=dim))
             return TensorSpec(ty, shape)
 
-        if self.dtype() is DType.int8:
+        if self.dtype() == DType.int8:
             return get_spec[DType.int8]()
-        if self.dtype() is DType.uint16:
+        if self.dtype() == DType.uint16:
             return get_spec[DType.int16]()
-        if self.dtype() is DType.int32:
+        if self.dtype() == DType.int32:
             return get_spec[DType.int32]()
-        if self.dtype() is DType.int64:
+        if self.dtype() == DType.int64:
             return get_spec[DType.int64]()
 
-        if self.dtype() is DType.uint8:
+        if self.dtype() == DType.uint8:
             return get_spec[DType.uint8]()
-        if self.dtype() is DType.uint16:
+        if self.dtype() == DType.uint16:
             return get_spec[DType.uint16]()
-        if self.dtype() is DType.uint32:
+        if self.dtype() == DType.uint32:
             return get_spec[DType.uint32]()
-        if self.dtype() is DType.uint64:
+        if self.dtype() == DType.uint64:
             return get_spec[DType.uint64]()
 
-        if self.dtype() is DType.float16:
+        if self.dtype() == DType.float16:
             return get_spec[DType.float16]()
-        if self.dtype() is DType.float32:
+        if self.dtype() == DType.float32:
             return get_spec[DType.float32]()
-        if self.dtype() is DType.float64:
+        if self.dtype() == DType.float64:
             return get_spec[DType.float64]()
-        if self.dtype() is DType.bool:
+        if self.dtype() == DType.bool:
             return get_spec[DType.bool]()
 
-        raise String("Expected type: ") + self.dtype().__str__()
+        raise String("Expected type: ") + String(self.dtype())

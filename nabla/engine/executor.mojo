@@ -11,32 +11,32 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from memory import ArcPointer
-from collections import Dict
+import nabla.compiler as compiler
+from std.memory import ArcPointer
+from std.collections import Dict
 
-from memory import ArcPointer
-from utils import Variant
+from std.memory import ArcPointer
+from std.utils import Variant
 from nabla.core.device_array import DeviceArray
 from nabla.core.utils import compact_dtype_repr
 from nabla.api.utils import ExecutionContext
 
 
-@value
+@fieldwise_init
 struct NameDict(Copyable, Movable):
     var names: Dict[Int, String]
-    alias alphabet: String = "abcdefghijklmnopqrstuvwxyz"
+    comptime alphabet: String = "abcdefghijklmnopqrstuvwxyz"
     var counter: Int
     var prefix_ctr: Int
     var curr_prefix: String
 
-    fn __init__(out self):
+    def __init__(out self):
         self.names = Dict[Int, String]()
         self.prefix_ctr = 0
         self.curr_prefix = ""
         self.counter = 0
 
-    fn get_name(mut self, key: Int) -> String:
+    def get_name(mut self, key: Int) -> String:
         try:
             if key in self.names:
                 return self.names[key]
@@ -54,14 +54,14 @@ struct NameDict(Copyable, Movable):
             return String(key)
 
 
-@value
-struct Executor(Copyable, Movable, Stringable, Writable):
+@fieldwise_init
+struct Executor(Copyable, Movable, Writable):
     var inputs: List[DeviceArray]
     var trace: List[DeviceArray]
     var outputs: List[DeviceArray]
     var execution_context: ExecutionContext
 
-    fn __init__(
+    def __init__(
         out self,
         mut outputs: List[DeviceArray],
         execution_context: Optional[ExecutionContext],
@@ -73,19 +73,19 @@ struct Executor(Copyable, Movable, Stringable, Writable):
         self.trace = List[DeviceArray]()
         self.outputs = List[DeviceArray]()
 
-        for output in outputs:
-            if output[].num_elements() > 0:
+        for ref output in outputs:
+            if output.num_elements() > 0:
                 continue
 
-            output[].is_tmp_output_(True)
-            self.setup_trace_recursively(output[])
+            output.is_tmp_output_(True)
+            self.setup_trace_recursively(output)
 
         self.reset_visited()
 
         # print("Trace:")
         # print(self)
 
-    fn setup_trace_recursively(mut self, mut array: DeviceArray) raises -> None:
+    def setup_trace_recursively(mut self, mut array: DeviceArray) raises -> None:
         if array.visited():
             return
 
@@ -99,7 +99,7 @@ struct Executor(Copyable, Movable, Stringable, Writable):
             return
 
         for arg in array.args():
-            var parent = arg[]
+            var parent = arg
             self.setup_trace_recursively(parent)
 
         array.id_(len(self.trace))
@@ -111,11 +111,11 @@ struct Executor(Copyable, Movable, Stringable, Writable):
 
         self.trace.append(array)
 
-    fn reset_visited(mut self) raises -> None:
-        for array in self.trace:
-            array[].visited_(False)
+    def reset_visited(mut self) raises -> None:
+        for ref array in self.trace:
+            array.visited_(False)
 
-    fn setup_output[
+    def setup_output[
         dtype: DType
     ](mut self, i: Int, max_outputs: compiler.engine.TensorMap) raises:
         var max_output = max_outputs.get[dtype]("output" + String(i))
@@ -124,14 +124,14 @@ struct Executor(Copyable, Movable, Stringable, Writable):
         for i in range(max_output.rank()):
             var dim = max_output.shape()[i]
             shape.append(dim)
-        var ptr = max_output._take_data_ptr().bitcast[Scalar[DType.uint8]]()
+        var ptr = max_output.copy()._take_data_ptr().bitcast[Scalar[DType.uint8]]()
         var spec = compiler.tensor.TensorSpec(dtype, shape)
         self.outputs[i].impl[]._data = ptr
-        self.outputs[i].impl[].spec = spec
+        self.outputs[i].impl[].spec = spec.copy()
         self.outputs[i].dtype_(dtype)
-        self.outputs[i].impl[].shape = shape
+        self.outputs[i].impl[].shape = shape.copy()
 
-    fn map[
+    def map[
         dtype: DType
     ](
         self,
@@ -146,7 +146,7 @@ struct Executor(Copyable, Movable, Stringable, Writable):
             ptr,
         )
 
-    fn execute_trace(
+    def execute_trace(
         mut self,
         read max_model: compiler.engine.Model,
     ) raises -> None:
@@ -216,13 +216,13 @@ struct Executor(Copyable, Movable, Stringable, Writable):
             else:
                 raise "Unsupported dtype: " + String(dtype)
 
-    fn realize(mut self) raises -> None:
+    def realize(mut self) raises -> None:
         # print("Trace:")
         # print(self)
 
         var nothing_to_realize = True
         for output in self.outputs:
-            if output[].num_elements() == 0:
+            if output.num_elements() == 0:
                 nothing_to_realize = False
                 break
 
@@ -230,12 +230,12 @@ struct Executor(Copyable, Movable, Stringable, Writable):
             return
 
         var key: Int = 0
-        for array in self.trace:
+        for ref array in self.trace:
             var node_hash: Int
-            if array[].is_tmp_input():
-                node_hash = hash(array[].impl[].spec.__str__())
+            if array.is_tmp_input():
+                node_hash = Int(hash(String(array.impl[].spec)))
             else:
-                node_hash = hash(array[].impl[].name)
+                node_hash = Int(hash(array.impl[].name))
             key = key ^ (node_hash + 0x9E3779B9 + (key << 6) + (key >> 2))
 
         key = key % 1000000007
@@ -247,37 +247,37 @@ struct Executor(Copyable, Movable, Stringable, Writable):
         var max_model = self.execution_context[key]
         self.execute_trace(max_model[])
 
-        for input in self.inputs:
-            input[].is_tmp_input_(False)
+        for ref input in self.inputs:
+            input.is_tmp_input_(False)
 
-        for output in self.outputs:
+        for ref output in self.outputs:
             if (
-                not output[].impl[]._diffable
-                or output[].impl[].requires_pullback
+                not output.impl[]._diffable
+                or output.impl[].requires_pullback
             ):
-                output[].clear_args()
-            output[].is_tmp_output_(False)
+                output.clear_args()
+            output.is_tmp_output_(False)
 
-    fn realize_staticexecutor(mut self) raises -> None:
+    def realize_staticexecutor(mut self) raises -> None:
         var keys = self.execution_context.dict[].keys()
         if len(keys) != 1:
-            raise "Only one model should be in the cache" + len(keys).__str__()
+            raise "Only one model should be in the cache" + String(len(keys))
         var key = -1
         for k in keys:
-            key = k[]
+            key = k
         var max_model = self.execution_context[key]
         self.execute_trace(max_model[])
 
-    fn create_model(self) raises -> ArcPointer[compiler.engine.Model]:
+    def create_model(self) raises -> ArcPointer[compiler.engine.Model]:
         var in_types = List[compiler.graph.Type]()
         for input in self.inputs:
             var shape_dim = List[compiler.graph.Dim]()
-            var shape = input[].impl[].spec.shape
-            for i in range(input[].impl[].spec.rank()):
+            var shape = input.impl[].spec.shape()
+            for i in range(input.impl[].spec.rank()):
                 shape_dim.append(compiler.graph.Dim(shape[i]))
             in_types.append(
                 compiler.graph.Type(
-                    compiler.graph.TensorType(input[].dtype(), shape_dim)
+                    compiler.graph.TensorType(input.dtype(), shape_dim)
                 )
             )
         var graph = compiler.graph.Graph(in_types)
@@ -289,40 +289,40 @@ struct Executor(Copyable, Movable, Stringable, Writable):
 
         for array in self.trace:
             var arg_ids = List[Int]()
-            for arg in array[].args():
-                arg_ids.append(arg[].id())
+            for arg in array.args():
+                arg_ids.append(arg.id())
 
-            if array[].impl[]._max_symbol:
+            if array.impl[]._max_symbol:
                 continue
             else:
                 var _args__max_symbol = List[compiler.graph.Symbol]()
-                for arg in array[].args():
-                    if arg[].impl[]._max_symbol:
+                for arg in array.args():
+                    if arg.impl[]._max_symbol:
                         _args__max_symbol.append(
-                            arg[].impl[]._max_symbol.value()
+                            arg.impl[]._max_symbol.value()
                         )
                     else:
                         raise "Max array not found for array with id: " + String(
-                            arg[].id()
+                            arg.id()
                         )
-                if array[].impl[]._maxpr:
-                    array[].impl[]._max_symbol = (
-                        array[]
+                if array.impl[]._maxpr:
+                    array.impl[]._max_symbol = (
+                        array
                         .impl[]
-                        ._maxpr.value()(_args__max_symbol, array[])
+                        ._maxpr.value()(_args__max_symbol, array)
                     )
                 else:
                     raise "Execute max function not found for array with id: " + String(
-                        array[].id()
+                        array.id()
                     )
 
         var output_arrays = List[compiler.graph.Symbol]()
         for output in self.outputs:
-            if output[].impl[]._max_symbol:
-                output_arrays.append(output[].impl[]._max_symbol.value())
+            if output.impl[]._max_symbol:
+                output_arrays.append(output.impl[]._max_symbol.value())
             else:
                 raise "Max array not found for array with id: " + String(
-                    output[].id()
+                    output.id()
                 )
 
         graph.output(output_arrays)
@@ -332,11 +332,11 @@ struct Executor(Copyable, Movable, Stringable, Writable):
         max_model = ArcPointer(session.load(graph))
 
         for array in self.trace:
-            array[].impl[]._max_symbol = None
+            array.impl[]._max_symbol = None
 
         return max_model^
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         var name_dict = NameDict()
 
         var out: String = "{ \033[1;94mlambda \033[0m"
@@ -348,17 +348,17 @@ struct Executor(Copyable, Movable, Stringable, Writable):
                 + name_dict.get_name(array.id())
                 + "\033[35m:"
                 + compact_dtype_repr(array.dtype())
-                + array.shape().__str__()
+                + String(array.shape())
                 + "\033[0m"
             )
 
         out += ". \033[1;94mlet\033[0m\n"
         for array in self.trace:
-            if array[].is_tmp_input():
+            if array.is_tmp_input():
                 continue
 
-            var id = array[].id()
-            var name = array[].impl[].name
+            var id = array.id()
+            var name = array.impl[].name
             var batch_dim_ctr = 0
             try:
                 start_idx = name.find("{")
@@ -370,9 +370,9 @@ struct Executor(Copyable, Movable, Stringable, Writable):
             except e:
                 print("Error in executor __str__ method:", e, "String:", name)
 
-            var dtype_str = "\033[35m:" + compact_dtype_repr(array[].dtype())
+            var dtype_str = "\033[35m:" + compact_dtype_repr(array.dtype())
             var shape_str: String = "\033[35m["
-            var shape = array[].shape()
+            var shape = array.shape()
             var first_element_in_shape = True
 
             if batch_dim_ctr > 0:
@@ -380,7 +380,7 @@ struct Executor(Copyable, Movable, Stringable, Writable):
                 for i in range(batch_dim_ctr):
                     if not first_element_in_shape:
                         shape_str += ","
-                    shape_str += shape[i].__str__()
+                    shape_str += String(shape[i])
                     first_element_in_shape = False
                 shape_str += "\033[0m"
 
@@ -391,23 +391,23 @@ struct Executor(Copyable, Movable, Stringable, Writable):
                 for i in range(batch_dim_ctr, len(shape)):
                     if i > batch_dim_ctr:
                         shape_str += ","
-                    shape_str += shape[i].__str__()
+                    shape_str += String(shape[i])
                     # first_element_in_shape = False
                 shape_str += "\033[0m"
 
             shape_str += "\033[35m]\033[0m"
 
             for input in self.inputs:
-                if input[].id() == id:
+                if input.id() == id:
                     # is_input = True
                     break
             for output in self.outputs:
-                if output[].id() == id:
+                if output.id() == id:
                     # is_output = True
                     break
             var arg_ids = String("")
-            for arg in array[].impl[]._args:
-                arg_ids += name_dict.get_name(arg[][].id) + " "
+            for arg in array.impl[]._args:
+                arg_ids += name_dict.get_name(arg[].id) + " "
             # if is_input:
             #     colored_id = "\033[33m%" + String(id) + "\033[0m"
             # elif is_output:
@@ -425,7 +425,7 @@ struct Executor(Copyable, Movable, Stringable, Writable):
                 + " "
                 + arg_ids
             )
-            if array[].impl[].is_checkpoint:
+            if array.impl[].is_checkpoint:
                 out += " \033[92m•\033[0m"
 
             out += "\n"
@@ -439,5 +439,5 @@ struct Executor(Copyable, Movable, Stringable, Writable):
         out += ") }\n"
         return out
 
-    fn write_to[W: Writer](self, mut writer: W):
-        writer.write(self.__str__())
+    def write_to[W: Writer](self, mut writer: W):
+        writer.write(String(self))

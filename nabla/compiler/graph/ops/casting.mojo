@@ -11,17 +11,18 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Ops that modify the shape or data type of a symbolic tensor."""
-from collections import Dict, Optional
+from std.collections import Dict, Optional
 
 from _mlir.builtin_attributes import StringAttr
 from _mlir.ir import Identifier, NamedAttribute
-from builtin._location import __call_location, _SourceLocation
+from .._loc import __call_location, _SourceLocation
 from nabla.compiler.tensor import Tensor, TensorShape
-from memory import UnsafePointer
+from std.memory import alloc, UnsafePointer
 
 from .._attributes import _shape_attr
+from ..symbol import Symbol
 from ..error import error
-from ..type import Dim
+from ..type import Dim, TensorType
 
 # TODO: Add checks or extend to unranked support, where static shapes assumed.
 
@@ -31,7 +32,7 @@ from ..type import Dim
 # ===----------------------------------------------------------------------=== #
 
 
-def shape_of(v: Symbol) -> Symbol:
+def shape_of(v: Symbol) raises -> Symbol:
     """Gets the shape of a symbolic tensor as a rank-1 symbolic tensor.
 
     Args:
@@ -51,7 +52,7 @@ def shape_of(v: Symbol) -> Symbol:
 # ===----------------------------------------------------------------------=== #
 
 
-def cast(v: Symbol, dtype: DType) -> Symbol:
+def cast(v: Symbol, dtype: DType) raises -> Symbol:
     """Casts a symbolic tensor to a different data type.
 
     Args:
@@ -192,7 +193,7 @@ def rebind(v: Symbol, out_dims: List[Dim], message: String) -> Symbol:
 # ===----------------------------------------------------------------------=== #
 
 
-def squeeze(v: Symbol, axis: Int) -> Symbol:
+def squeeze(v: Symbol, var axis: Int) raises -> Symbol:
     """Removes a size-1 dimension from a symbolic tensor.
 
     Args:
@@ -213,19 +214,19 @@ def squeeze(v: Symbol, axis: Int) -> Symbol:
 
     new_shape = g.op(
         "rmo.mo.squeeze_shape",
-        List[Symbol](shape_of(v), g.scalar(Int64(axis), rank=1)),
+        [shape_of(v), g.scalar[DType.int64](Int64(axis), rank=1)],
         TensorType(DType.int64, rank - 1),
     )
 
     squeezed_dims = List[Dim]()
     for i in range(rank):
         if i != axis:
-            squeezed_dims.append(v_type.dims[i])
+            squeezed_dims.append(v_type.dims[i].copy())
 
     return reshape(v, new_shape, squeezed_dims)
 
 
-def unsqueeze(v: Symbol, axis: Int) -> Symbol:
+def unsqueeze(v: Symbol, var axis: Int) raises -> Symbol:
     """Inserts a size-1 dimension into a symbolic tensor.
 
     Args:
@@ -260,7 +261,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
     # TODO: Bug - passing v_type.rank() + 1 into a variadic Int64 corrupts it.
     new_shape = g.op(
         "rmo.mo.unsqueeze_shape",
-        List[Symbol](shape_of(v), g.scalar(Int64(axis), rank=1)),
+        [shape_of(v), g.scalar[DType.int64](Int64(axis), rank=1)],
         TensorType(DType.int64, rank + 1),
     )
 
@@ -268,7 +269,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
     for i in range(rank):
         if i == axis:
             dims.append(1)
-        dims.append(type.dims[i])
+        dims.append(type.dims[i].copy())
     if axis == rank:
         dims.append(1)
 
@@ -277,7 +278,7 @@ def unsqueeze(v: Symbol, axis: Int) -> Symbol:
 
 # TODO(GEX-578): Remove old reshape apis once we have dim expressions and remove dynamic dimensions.
 # Only this version should be needed in the future.
-def reshape(v: Symbol, shape: List[Dim]) -> Symbol:
+def reshape(v: Symbol, shape: List[Dim]) raises -> Symbol:
     """Reshapes a symbolic tensor.
 
     The number and order of the elements in the tensor is unchanged.
@@ -307,12 +308,12 @@ def reshape(v: Symbol, shape: List[Dim]) -> Symbol:
     newShapeAttr = _shape_attr(ctx, "newShape", shape)
     return g.op(
         "rmo.reshape",
-        List[Symbol](v),
-        attrs=List[NamedAttribute](newShapeAttr),
+        [v],
+        attrs=[newShapeAttr],
     )
 
 
-def reshape(v: Symbol, shape: Symbol, out_dims: List[Dim]) -> Symbol:
+def reshape(v: Symbol, shape: Symbol, out_dims: List[Dim]) raises -> Symbol:
     """Reshapes a symbolic tensor.
 
     The number and order of the elements in the tensor is unchanged.
@@ -338,18 +339,18 @@ def reshape(v: Symbol, shape: Symbol, out_dims: List[Dim]) -> Symbol:
     """
     g = v.graph()
     dtype = shape.tensor_type().dtype
-    if not (dtype is DType.int64 or dtype is DType.int32):
-        raise error(g, "reshape shape must be int32 or int64")
+    if not (dtype == DType.int64 or dtype == DType.int32):
+        raise error(g.copy(), "reshape shape must be int32 or int64")
     if shape.tensor_type().rank() != 1:
-        raise error(g, "reshape shape must be rank 1")
+        raise error(g.copy(), "reshape shape must be rank 1")
     return g.op(
         "rmo.mo.reshape",
-        List[Symbol](v, shape),
+        [v, shape],
         TensorType(v.tensor_type().dtype, out_dims),
     )
 
 
-def reshape(v: Symbol, shape: List[Symbol]) -> Symbol:
+def reshape(v: Symbol, shape: List[Symbol]) raises -> Symbol:
     """Reshapes a symbolic tensor.
 
     The number and order of the elements in the tensor is unchanged.
@@ -382,12 +383,12 @@ def reshape(v: Symbol, shape: List[Symbol]) -> Symbol:
     for i in range(len(shape)):
         if shape[i].tensor_type().rank() != 0:
             print(shape[i])
-            raise error(g, "reshape requires 0-rank dims")
+            raise error(g.copy(), "reshape requires 0-rank dims")
 
     return reshape(v, stack(shape))
 
 
-def reshape(v: Symbol, shape: Symbol) -> Symbol:
+def reshape(v: Symbol, shape: Symbol) raises -> Symbol:
     """Reshapes a symbolic tensor.
 
     The number and order of the elements in the tensor is unchanged.
@@ -415,7 +416,7 @@ def reshape(v: Symbol, shape: Symbol) -> Symbol:
 
     shape_t = shape.tensor_type()
     if (shape_t.rank() != 1) or (not shape_t.dims[0].is_static()):
-        raise error(g, "reshape shape requires static shape shape")
+        raise error(g.copy(), "reshape shape requires static shape shape")
     out_dims = List[Dim]()
     for _ in range(shape_t.dims[0].num_elements()):
         out_dims.append(Dim.dynamic())
@@ -451,7 +452,7 @@ def reshape_like(v: Symbol, like: Symbol) -> Symbol:
 @always_inline
 def broadcast_to(
     v: Symbol, shape: List[Dim], location: Optional[_SourceLocation] = None
-) -> Symbol:
+) raises -> Symbol:
     """Broadcasts a symbolic tensor.
 
     Broadcasts the input tensor to the specified shape.
@@ -475,11 +476,11 @@ def broadcast_to(
     try:
         return g.op(
             "rmo.broadcast_to",
-            List[Symbol](v),
-            attrs=List[NamedAttribute](newShapeAttr),
+            [v],
+            attrs=[newShapeAttr],
         )
     except e:
-        raise error(g, e, location=location or __call_location())
+        raise error(g.copy(), e, location=location or __call_location())
 
 
 # ===----------------------------------------------------------------------=== #
@@ -487,7 +488,8 @@ def broadcast_to(
 # ===----------------------------------------------------------------------=== #
 
 
-def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
+def transpose(
+    input: Symbol, var x: Int, var y: Int) raises -> Symbol:
     """Transposes two dimensions of a symbolic tensor.
 
     Args:
@@ -515,15 +517,15 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
         raise "transpose dim outside range"
 
     dims = List[Dim]()
-    ptr = UnsafePointer[Int64].alloc(input_type.rank())
+    ptr = alloc[Int64](input_type.rank())
     for i in range(input_type.rank()):
-        dims.append(input_type.dims[i])
-        ptr.store(i, i)
+        dims.append(input_type.dims[i].copy())
+        ptr[i] = Int64(i)
 
-    dims[x] = input_type.dims[y]
-    dims[y] = input_type.dims[x]
-    ptr.store(x, y)
-    ptr.store(y, x)
+    dims[x] = input_type.dims[y].copy()
+    dims[y] = input_type.dims[x].copy()
+    ptr[x] = Int64(y)
+    ptr[y] = Int64(x)
 
     transpose_indices = g.constant(
         Tensor[DType.int64](TensorShape(input_type.rank()), ptr)
@@ -531,7 +533,7 @@ def transpose(input: Symbol, x: Int, y: Int) -> Symbol:
 
     return g.op(
         "rmo.mo.transpose",
-        List[Symbol](input, transpose_indices),
+        [input, transpose_indices],
         TensorType(input_type.dtype, dims),
     )
 

@@ -11,15 +11,15 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
-from time import perf_counter
+import std.math as math
+from std.time import perf_counter
 import nabla
 
 
-def test_simple_nn():
+def test_simple_nn() raises:
     batch_size = 128
 
-    layers = List(1, 64, 128, 128, 64, 1)
+    layers = [1, 64, 128, 128, 64, 1]
     every = 100
     iterations = 400
 
@@ -37,7 +37,7 @@ def test_simple_nn():
 
     for i in range(len(layers) - 1):
         w = nabla.randn((layers[i + 1], layers[i]), DType.float32) * math.sqrt(
-            2.0 / layers[i]
+            2.0 / Float64(layers[i])
         )
         w.requires_grad_(True)
         weights.append(w)
@@ -47,7 +47,7 @@ def test_simple_nn():
         )
         bias_velocities.append(nabla.zeros((layers[i + 1], 1), DType.float32))
 
-    def forward(_input: nabla.Array) capturing -> nabla.Array:
+    def forward(_input: nabla.Array) raises capturing -> nabla.Array:
         x = _input
         for i in range(len(layers) - 1):
             x = weights[i] @ x + biases[i]
@@ -66,10 +66,10 @@ def test_simple_nn():
             min=0.0,
             max=1.0,
         )
-        y = nabla.sin((periods * 2.0 * math.pi) * input) / 2.0 + 0.5
+        y = nabla.sin((Float64(periods) * 2.0 * math.pi) * input) / 2.0 + 0.5
 
         prediction = forward(input)
-        loss = nabla.sum((prediction - y) ** 2.0) / batch_size
+        loss = nabla.sum((prediction - y) ** 2.0) / Float64(batch_size)
 
         loss.backward()
 

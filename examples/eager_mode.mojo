@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
-from time import perf_counter
+import std.math as math
+from std.time import perf_counter
 import nabla
 
 
@@ -25,18 +25,18 @@ def test_eager_mode():
         if z.load(0) > 0:
             w = nabla.cos(z)
             p = -nabla.sin(z) / y
-            return List(w, p)
+            return [w, p]
         else:
             w = nabla.cos(nabla.sin(z))
             p = -nabla.sin(nabla.sin(z))
-            return List(w, p)
+            return [w, p]
 
     ctx = nabla.ExecutionContext()
     arg0 = nabla.ones((1, 3), DType.float32, False, ctx)
     arg1 = nabla.ones((1, 3), DType.float32, False, ctx)
 
     for iteration in range(1001):
-        outputs = foo1(List(arg0, arg1))
+        outputs = foo1([arg0, arg1])
         arg0 = outputs[0]
         arg1 = outputs[1]
 
@@ -46,28 +46,28 @@ def test_eager_mode():
             print(arg1)
 
 
-def test_backward_eager_mode():
+def test_backward_eager_mode() raises:
     # EAGER MODE
 
-    def foo1(_args: List[nabla.Array]) -> List[nabla.Array]:
+    def foo1(_args: List[nabla.Array]) raises -> List[nabla.Array]:
         x = nabla.cast(nabla.sin(_args[0]), DType.float64)
         y = nabla.cast(nabla.sin(_args[1]), DType.float64)
         z = x * y
         if z.load(0) > 0:
             w = nabla.cos(z)
             p = -nabla.sin(z) / y
-            return List(w, p)
+            return [w, p]
         else:
             w = nabla.cos(nabla.sin(z))
             p = -nabla.sin(nabla.sin(z))
-            return List(w, p)
+            return [w, p]
 
     ctx = nabla.ExecutionContext()
     arg0 = nabla.ones((1, 3), DType.float32, True, ctx)
     arg1 = nabla.ones((1, 3), DType.float32, True, ctx)
 
     for iteration in range(101):
-        outputs = foo1(List(arg0, arg1))
+        outputs = foo1([arg0, arg1])
         nabla.backward(outputs[0])
         arg0 = arg0 - arg0.grad() * 0.01
         arg1 = arg1 - arg1.grad() * 0.01

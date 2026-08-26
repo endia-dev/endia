@@ -20,6 +20,7 @@ from nabla.engine.utils import (
     callable,
 )
 from nabla.api.utils import ExecutionContext
+from nabla.api.array import Array
 from nabla.engine.trafos.jacfwd_trafo import jacfwd_end_rule
 from nabla.engine.trafos.jvp_trafo import jvp_call, jvp_end_rule
 from nabla.engine.trafos.jacrev_trafo import (
@@ -32,10 +33,10 @@ from nabla.engine.trafos.jit_trafo import set_execution_context_recursively
 from nabla.engine.trafos.vmap_trafo import vmap_start_rule, vmap_end_rule
 from nabla.engine.trafos.grad_trafo import grad_call, grad_end_rule
 from nabla.engine.utils import GraphRepr
-from memory import ArcPointer
+from std.memory import ArcPointer
 
 
-fn jacfwd(
+def jacfwd(
     callable: Callable,
 ) raises -> Callable:
     var meta = TrafoMeta()
@@ -46,15 +47,15 @@ fn jacfwd(
     )
 
 
-fn jacfwd(
-    func: fn (List[Array]) raises -> List[Array],
+def jacfwd(
+    func: def (List[Array]) raises thin -> List[Array],
 ) raises -> Callable:
     return jacfwd(callable(func))
 
 
-fn jacrev(callable: Callable, remat: Bool = False) raises -> Callable:
+def jacrev(callable: Callable, remat: Bool = False) raises -> Callable:
     var meta = TrafoMeta()
-    meta["with_remat"] = List[Int](remat)
+    meta["with_remat"] = [Int(remat)]
     return Callable(
         callable,
         meta,
@@ -64,16 +65,16 @@ fn jacrev(callable: Callable, remat: Bool = False) raises -> Callable:
     )
 
 
-fn jacrev(
-    func: fn (List[Array]) raises -> List[Array],
+def jacrev(
+    func: def (List[Array]) raises thin -> List[Array],
     remat: Bool = False,
 ) raises -> Callable:
     return jacrev(callable(func), remat)
 
 
-fn grad(callable: Callable, remat: Bool = False) raises -> Callable:
+def grad(callable: Callable, remat: Bool = False) raises -> Callable:
     var meta = TrafoMeta()
-    meta["with_remat"] = List[Int](remat)
+    meta["with_remat"] = [Int(remat)]
     return Callable(
         callable,
         meta,
@@ -82,25 +83,25 @@ fn grad(callable: Callable, remat: Bool = False) raises -> Callable:
     )
 
 
-fn grad(
-    func: fn (List[Array]) raises -> List[Array], remat: Bool = False
+def grad(
+    func: def (List[Array]) raises thin -> List[Array], remat: Bool = False
 ) raises -> Callable:
     return grad(callable(func), remat)
 
 
-fn jit(func: Callable) raises -> Callable:
+def jit(func: Callable) raises -> Callable:
     var meta = TrafoMeta()
     var execution_context = ExecutionContext()
     callable_ref = ArcPointer(Callable(func, meta=meta))
     set_execution_context_recursively(callable_ref, execution_context)
-    return callable_ref[]
+    return callable_ref[].copy()
 
 
-fn jit(func: fn (List[Array]) raises -> List[Array]) raises -> Callable:
+def jit(func: def (List[Array]) raises thin -> List[Array]) raises -> Callable:
     return jit(callable(func))
 
 
-fn jvp(
+def jvp(
     func: Callable,
     primals: List[Array],
     tangents: List[Array],
@@ -111,28 +112,28 @@ fn jvp(
         meta,
         call=jvp_call,
         post=jvp_end_rule,
-        const_args=primals + tangents,
+        const_args=primals + tangents.copy(),
     )()
     var num_res = meta["num_res"][0]
-    return res[:num_res], res[num_res:]
+    return List(res[:num_res]), List(res[num_res:])
 
 
-fn jvp(
-    func: fn (List[Array]) raises -> List[Array],
+def jvp(
+    func: def (List[Array]) raises thin -> List[Array],
     primals: List[Array],
     tangents: List[Array],
 ) raises -> Tuple[List[Array], List[Array]]:
     return jvp(callable(func), primals, tangents)
 
 
-fn vjp(
+def vjp(
     func: Callable,
     primals: List[Array],
     remat: Bool = False,
 ) raises -> Tuple[List[Array], Callable]:
     var meta = TrafoMeta()
-    meta["with_remat"] = List[Int](remat)
-    meta["num_primals"] = List(len(primals))
+    meta["with_remat"] = [Int(remat)]
+    meta["num_primals"] = [len(primals)]
     return func(primals), Callable(
         func,
         meta,
@@ -142,15 +143,15 @@ fn vjp(
     )
 
 
-fn vjp(
-    func: fn (List[Array]) raises -> List[Array],
+def vjp(
+    func: def (List[Array]) raises thin -> List[Array],
     primals: List[Array],
     remat: Bool = False,
 ) raises -> Tuple[List[Array], Callable]:
     return vjp(callable(func), primals, remat)
 
 
-fn vmap(
+def vmap(
     func: Callable,
     in_axes: List[Int] = List[Int](),
     out_axes: List[Int] = List[Int](),
@@ -166,8 +167,8 @@ fn vmap(
     )
 
 
-fn vmap(
-    func: fn (List[Array]) raises -> List[Array],
+def vmap(
+    func: def (List[Array]) raises thin -> List[Array],
     in_axes: List[Int] = List[Int](),
     out_axes: List[Int] = List[Int](),
 ) raises -> Callable:

@@ -26,30 +26,31 @@ def main():
 
 """
 
-from buffer.dimlist import DimList
-from collections import InlineArray, Optional
+from std.buffer.dimlist import DimList
+from std.collections import InlineArray, Optional
 
 from layout import IntTuple, Layout, LayoutTensor, RuntimeLayout
 from nabla.compiler._tensor_utils import _indexing
 from nabla.compiler.tensor import Tensor as OldTensor
 from nabla.compiler.tensor import TensorShape, TensorSpec
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
-from utils import IndexList
-from utils._serialize import _serialize
+from std.utils import IndexList
 
 from ._utils import _convert_from
 from .device import Device, DeviceMemory, DeviceTensor
+from nabla.compiler._utils import null_ptr
+from std.os import abort
 
 
 struct Tensor[type: DType, rank: Int](
-    Copyable, Movable, EqualityComparable, Stringable, Writable
+    Copyable, Movable, Equatable, Writable
 ):
     """An owned, indexible buffer type."""
 
-    var _ptr: UnsafePointer[Scalar[type]]
-    var _spec: RuntimeTensorSpec[type, rank]
-    var _strides: IndexList[rank]
+    var _ptr: UnsafePointer[Scalar[Self.type], MutUntrackedOrigin]
+    var _spec: RuntimeTensorSpec[Self.type, Self.rank]
+    var _strides: IndexList[Self.rank]
     var _device: Device
     var name: Optional[String]
 
@@ -57,9 +58,9 @@ struct Tensor[type: DType, rank: Int](
     # after DeviceMemory/DeviceTensor work.
     # this is needed because DeviceMemory may have a custom free
     # function set on the cpp side.
-    var _device_memory_impl_ptr: UnsafePointer[NoneType]
+    var _device_memory_impl_ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias layout_tensor = LayoutTensor[
+    comptime layout_tensor = LayoutTensor[
         type,
         Layout(
             IntTuple(DimList.create_unknown[rank]()),
@@ -70,18 +71,18 @@ struct Tensor[type: DType, rank: Int](
     """The corresponding layout tensor type which acts as a structured view
     into the underlying data."""
 
-    fn __init__(out self) raises:
+    def __init__(out self) raises:
         """Default constructor for Tensor. Accessing the elements of default
         constructed tensor is undefined behavior.
         """
-        self._ptr = UnsafePointer[Scalar[type]]()
-        self._spec = RuntimeTensorSpec[type, rank](IndexList[rank]())
-        self._strides = IndexList[rank]()
+        self._ptr = null_ptr[Scalar[Self.type]]()
+        self._spec = RuntimeTensorSpec[Self.type, Self.rank](IndexList[Self.rank]())
+        self._strides = IndexList[Self.rank]()
         self._device = Device()
         self.name = None
-        self._device_memory_impl_ptr = UnsafePointer[NoneType]()
+        self._device_memory_impl_ptr = null_ptr[NoneType]()
 
-    fn __init__(out self, *, owned device_tensor: DeviceTensor) raises:
+    def __init__(out self, *, var device_tensor: DeviceTensor) raises:
         """Creates a tensor from DeviceTensor.
 
         Args:
@@ -91,12 +92,12 @@ struct Tensor[type: DType, rank: Int](
         self.name = device_tensor.name()
         self._spec = device_tensor.spec
         self._strides = _indexing._row_major_strides(self._spec.shape)
-        self._ptr = device_tensor.unsafe_ptr().bitcast[Scalar[type]]()
+        self._ptr = device_tensor.unsafe_ptr().bitcast[Scalar[Self.type]]()
         var tmp = device_tensor._storage^
         device_tensor._storage = DeviceMemory()
         self._device_memory_impl_ptr = tmp^._steal_impl_ptr()
 
-    fn __init__(
+    def __init__(
         out self, shape: TensorShape, device: Optional[Device] = None
     ) raises:
         """Creates tensor with given shape on the given device. If device is
@@ -106,21 +107,21 @@ struct Tensor[type: DType, rank: Int](
             shape: Shape of the tensor.
             device: Device on which tensor is to be allocated.
         """
-        var spec = TensorSpec(type, shape)
-        var dev = device.value() if device else cpu()
+        var spec = TensorSpec(Self.type, shape)
+        var dev = device.value().copy() if device else cpu()
         var dt = dev.allocate(spec)
-        self = Self(device_tensor=dt)
+        self = Self(device_tensor=dt.copy())
 
-    fn __init__(out self, tensor: OldTensor[type]) raises:
+    def __init__(out self, tensor: OldTensor[Self.type]) raises:
         """Converts max.tensor to max.driver.Tensor. This creates tensor on
         the CPU.
 
         Args:
             tensor: Tensor to copy from.
         """
-        self = _convert_from[rank=rank](tensor)
+        self = _convert_from[rank = Self.rank](tensor)
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move constructor for Tensor.
 
         Args:
@@ -133,29 +134,14 @@ struct Tensor[type: DType, rank: Int](
         self.name = existing.name^
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
-    @doc_private
-    fn __copyinit__(out self, existing: Self):
-        # This temporarily exists so that we can store Tensor in a List
-        # TODO(MSTDL-467): Once Copyable requirement on List is removed, this
-        # can be removed
-        constrained[False, "__copyinit__ not supported on Tensor, MSTDL-467"]()
-        self._ptr = existing._ptr
-        self._spec = existing._spec
-        self._strides = existing._strides
-        self._device = existing._device
-        self.name = existing.name
-        self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn spec(self) -> RuntimeTensorSpec[type, rank]:
+    def spec(self) -> RuntimeTensorSpec[Self.type, Self.rank]:
         """Gets the spec of tensor.
 
         Returns
@@ -164,7 +150,7 @@ struct Tensor[type: DType, rank: Int](
         return self._spec
 
     @always_inline
-    fn __getitem__(mut self, *indices: Int) -> ref [self] Scalar[type]:
+    def __getitem__(mut self, *indices: Int) -> ref [self] Scalar[type]:
         """Gets the value at the specified indices.
 
         Args:
@@ -179,7 +165,7 @@ struct Tensor[type: DType, rank: Int](
 
         @always_inline
         @parameter
-        fn _is_cpu() -> Bool:
+        def _is_cpu() -> Bool:
             return "cpu" in String(self._device)
 
         debug_assert[_is_cpu](
@@ -190,7 +176,7 @@ struct Tensor[type: DType, rank: Int](
         return self._ptr[offset]
 
     @always_inline
-    fn to_layout_tensor(
+    def to_layout_tensor(
         self,
         out result: Self.layout_tensor,
     ) raises:
@@ -203,29 +189,29 @@ struct Tensor[type: DType, rank: Int](
         Returns:
             View of the tensor according to given slices.
         """
-        return __type_of(result)(
+        return type_of(result)(
             self.unsafe_ptr(),
-            __type_of(result.runtime_layout)(self._spec.shape, self._strides),
+            type_of(result.runtime_layout)(self._spec.shape, self._strides),
         )
 
-    fn _steal_ptr(owned self) -> UnsafePointer[Scalar[type]]:
+    def _steal_ptr(var self) -> UnsafePointer[Scalar[type]]:
         var tmp = self._ptr
-        self._ptr = UnsafePointer[Scalar[type]]()
+        self._ptr = null_ptr[Scalar[Self.type]]()
         return tmp
 
-    fn _get_device(self) -> Device:
-        return self._device
+    def _get_device(self) -> Device:
+        return self._device.copy()
 
-    fn to_device_tensor(owned self) raises -> DeviceTensor:
+    def to_device_tensor(var self) raises -> DeviceTensor:
         """Converts the tensor to a DeviceTensor.
 
         Returns:
-            DeviceTensor pointing to the memory owned by tensor.
+            DeviceTensor pointing to the memory var by tensor.
         """
         var spec = self.spec()
         return DeviceTensor(DeviceMemory(self^), TensorSpec(spec))
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for the tensor."""
         _ = DeviceMemory(
             self._device_memory_impl_ptr,
@@ -233,7 +219,7 @@ struct Tensor[type: DType, rank: Int](
             self._device,
         )
 
-    fn unsafe_ptr[__type: DType = type](self) -> UnsafePointer[Scalar[__type]]:
+    def unsafe_ptr[__type: DType = Self.type](self) -> UnsafePointer[Scalar[__type], MutUntrackedOrigin]:
         """Gets a pointer to the underlying memory.
 
         Note: The caller is responsible for ensuring that the returned pointer
@@ -246,9 +232,9 @@ struct Tensor[type: DType, rank: Int](
         Returns:
            Pointer to the beginning of tensor data.
         """
-        return rebind[UnsafePointer[Scalar[__type]]](self._ptr)
+        return rebind[UnsafePointer[Scalar[__type], MutUntrackedOrigin]](self._ptr)
 
-    fn take(mut self) raises -> Self:
+    def take(mut self) raises -> Self:
         """Takes self's resources and replaces them with default
         initialized values.
 
@@ -260,16 +246,16 @@ struct Tensor[type: DType, rank: Int](
         return tmp
 
     @no_inline
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Gets the tensor as a string.
 
         Returns:
           A compact string of the tensor.
         """
 
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats this Tensor to the provided Writer.
 
@@ -283,12 +269,12 @@ struct Tensor[type: DType, rank: Int](
         writer.write("Tensor(")
 
         @parameter
-        fn write_dtype_and_shape():
+        def write_dtype_and_shape():
             writer.write("dtype=")
-            writer.write(type)
+            writer.write(Self.type)
             writer.write(", ")
             writer.write("shape=")
-            for i in range(rank):
+            for i in range(Self.rank):
                 if i > 0:
                     writer.write("x")
                 writer.write(self._spec.shape[i])
@@ -302,20 +288,12 @@ struct Tensor[type: DType, rank: Int](
             writer.write(")")
             return
 
-        @parameter
-        fn serialize[T: Writable](val: T):
-            writer.write(val)
-
-        var shape = List[Int, hint_trivial_type=True]()
-        for i in range(self._spec.rank):
-            shape.append(self._spec.shape[i])
-
-        _serialize[serialize_fn=serialize, serialize_end_line=False](
-            self._ptr, shape
-        )
+        # Mojo 1.0 port: element serialization used std.utils._serialize,
+        # which is gone. Summarize instead.
+        write_dtype_and_shape()
         writer.write(")")
 
-    fn move_to(owned self, device: Device) raises -> Self:
+    def move_to(var self, device: Device) raises -> Self:
         """Returns self if already allocated on device, otherwise copy the contents
         of self to device.
 
@@ -327,7 +305,7 @@ struct Tensor[type: DType, rank: Int](
         """
         return self^.to_device_tensor().move_to(device).to_tensor[type, rank]()
 
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         """Check if two tensors are equal. Note that only host tensors can be
         compared. If either tensor is on an accelerator device, the result is False.
 
@@ -362,7 +340,7 @@ struct Tensor[type: DType, rank: Int](
                 return False
         return True
 
-    fn __ne__(self, other: Self) -> Bool:
+    def __ne__(self, other: Self) -> Bool:
         """Check if two tensors are not equal. Note that only host tensors can be
         compared. If either tensor is on an accelerator device, the result is True.
 

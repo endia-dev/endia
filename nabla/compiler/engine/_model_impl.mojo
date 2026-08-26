@@ -11,39 +11,37 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys.ffi import DLHandle
+from nabla.compiler._dlhandle import DLHandle
 
 from nabla.compiler._utils import call_dylib_func
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._compilation import CCompiledModel
 from ._status import Status
 from .session import InferenceSession
 
 
-@value
-@register_passable("trivial")
-struct CModel:
+struct CModel(TrivialRegisterPassable, ImplicitlyCopyable):
     """Mojo representation of Engine's AsyncModel pointer.
     Useful for C inter-op.
     """
 
-    var ptr: UnsafePointer[NoneType]
+    var ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias FreeModelFnName = "M_freeModel"
-    alias WaitForModelFnName = "M_waitForModel"
+    comptime FreeModelFnName = "M_freeModel"
+    comptime WaitForModelFnName = "M_waitForModel"
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self.ptr = ptr
 
-    fn await_model(self, lib: DLHandle) raises:
+    def await_model(self, lib: DLHandle) raises:
         var status = Status(lib)
         call_dylib_func(
             lib, Self.WaitForModelFnName, self.ptr, status.borrow_ptr()
         )
         if status:
-            raise status.__str__()
+            raise String(status)
 
-    fn free(self, lib: DLHandle):
+    def free(self, lib: DLHandle):
         call_dylib_func(lib, Self.FreeModelFnName, self)

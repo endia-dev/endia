@@ -11,16 +11,16 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from pathlib import Path
+from std.pathlib import Path
 
-from builtin._location import __call_location
+from ._loc import __call_location
 from nabla.compiler.engine import InferenceSession, TensorMap
 from nabla.compiler.tensor import Tensor, TensorShape
-from testing import assert_almost_equal, assert_equal
+from std.testing import assert_almost_equal, assert_equal
 
 
 @always_inline
-fn assert_tensors_almost_equal[
+def assert_tensors_almost_equal[
     dtype: DType
 ](
     a: Tensor[dtype],
@@ -40,7 +40,7 @@ fn assert_tensors_almost_equal[
 
 
 @always_inline
-fn assert_tensors_equal[
+def assert_tensors_equal[
     dtype: DType
 ](a: Tensor[dtype], b: Tensor[dtype]) raises:
     assert_equal(a.spec(), b.spec(), location=__call_location())
@@ -51,7 +51,7 @@ fn assert_tensors_equal[
 
 
 @always_inline
-fn execute_nullary[
+def execute_nullary[
     outtype: DType = DType.float32
 ](
     graph: Graph,
@@ -63,7 +63,7 @@ fn execute_nullary[
 
 
 @always_inline
-fn execute_nullary_list[
+def execute_nullary_list[
     outtype: DType = DType.float32
 ](
     graph: Graph,
@@ -82,7 +82,7 @@ fn execute_nullary_list[
 
 
 @always_inline
-fn execute_unary[
+def execute_unary[
     intype: DType = DType.float32, outtype: DType = DType.float32
 ](
     graph: Graph,
@@ -97,7 +97,7 @@ fn execute_unary[
 
 
 @always_inline
-fn execute_unary_list[
+def execute_unary_list[
     intype: DType = DType.float32, outtype: DType = DType.float32
 ](
     graph: Graph,
@@ -117,7 +117,7 @@ fn execute_unary_list[
 
 
 @always_inline
-fn execute_binary[
+def execute_binary[
     intype1: DType = DType.float32,
     intype2: DType = intype1,
     outtype: DType = intype1,
@@ -143,7 +143,7 @@ fn execute_binary[
 
 
 @always_inline
-fn execute_no_args(
+def execute_no_args(
     g: Graph,
     *,
     custom_ops_paths: List[Path] = List[Path](),
@@ -160,7 +160,7 @@ fn execute_no_args(
 
 
 @always_inline
-fn execute_n_args[
+def execute_n_args[
     dt1: DType, dt2: DType, dt3: DType
 ](
     g: Graph,
@@ -186,7 +186,7 @@ fn execute_n_args[
 
 
 @always_inline
-fn execute_n_args[
+def execute_n_args[
     dt1: DType, dt2: DType, dt3: DType, dt4: DType
 ](
     g: Graph,
@@ -214,7 +214,7 @@ fn execute_n_args[
 
 
 @always_inline
-fn execute_n_args[
+def execute_n_args[
     dt1: DType, dt2: DType, dt3: DType, dt4: DType, dt5: DType
 ](
     g: Graph,
@@ -244,7 +244,7 @@ fn execute_n_args[
 
 
 @always_inline
-fn execute_base(
+def execute_base(
     g: Graph,
     *tensors: Tensor,
     custom_ops_paths: List[Path] = List[Path](),

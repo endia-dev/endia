@@ -12,18 +12,18 @@
 # ===----------------------------------------------------------------------=== #
 
 from nabla.compiler.tensor import Tensor as OldTensor
-from memory import UnsafePointer, memcpy
+from std.memory import UnsafePointer, memcpy
 
 from .anytensor import AnyTensor
 from .device import Device, cpu
 from .tensor import Tensor
 
 
-fn _steal_device_memory_impl_ptr(
-    owned memory: AnyTensor,
-) raises -> UnsafePointer[NoneType]:
-    """This takes `memory` as mut and not owned because it is called on
-    References owned by a List (returned by List.__getitem__()).
+def _steal_device_memory_impl_ptr(
+    var memory: AnyTensor,
+) raises -> UnsafePointer[NoneType, MutUntrackedOrigin]:
+    """This takes `memory` as mut and not var because it is called on
+    References var by a List (returned by List.__getitem__()).
     """
     var tmp_device_tensor = memory^.to_device_tensor()
     var taken_device_memory = tmp_device_tensor._storage.take()
@@ -32,7 +32,7 @@ fn _steal_device_memory_impl_ptr(
     return ptr
 
 
-fn _convert_from[
+def _convert_from[
     dtype: DType, rank: Int
 ](old_tensor: OldTensor[dtype]) raises -> Tensor[dtype, rank]:
     """Converts max.tensor to max.driver.Tensor. This creates tensor on the CPU
@@ -53,10 +53,10 @@ fn _convert_from[
 
     var dev = cpu()
 
-    var new_tensor = Tensor[dtype, rank](old_tensor.spec().shape, dev)
+    var new_tensor = Tensor[dtype, rank](old_tensor.spec().shape(), dev.copy())
     memcpy(
         dest=new_tensor.unsafe_ptr(),
         src=old_tensor.unsafe_ptr(),
         count=old_tensor.num_elements(),
     )
-    return new_tensor
+    return new_tensor^

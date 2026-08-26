@@ -19,8 +19,8 @@ advance or if you don't know the tensor is DeviceTensor or Tensor:
 from nabla.compiler.driver import Tensor, AnyTensor
 from nabla.compiler.tensor import TensorShape
 
-@value
-struct Container:
+@fieldwise_init
+struct Container(Copyable, Movable):
     var _tensor: AnyTensor
 
 def main():
@@ -28,48 +28,50 @@ def main():
     container = Container(tensor^)
 ```
 """
-from collections import Optional
-from sys import alignof, external_call, CompilationTarget, sizeof
+from std.collections import Optional
+from std.sys import align_of as alignof, size_of as sizeof
+from std.sys.info import CompilationTarget
+from std.ffi import external_call
 
-from nabla.compiler._utils import exchange
+from nabla.compiler._utils import null_ptr, exchange
 from nabla.compiler.tensor import TensorSpec
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
-from utils import Variant
-from utils._serialize import _serialize
+from std.utils import Variant
 
 from .device import Device
 from .device_memory import DeviceMemory
 from .tensor import Tensor
+from std.os import abort
 
 
-struct AnyTensor(Stringable, Writable, Copyable, Movable):
+struct AnyTensor(Writable, Copyable, Movable):
     """A type erased tensor representation that is useful
     for situations where we need variadics of tensors."""
 
-    var _data: UnsafePointer[UInt8]
+    var _data: UnsafePointer[UInt8, MutUntrackedOrigin]
     var _spec: TensorSpec
     var _device: Device
     var _name: Optional[String]
-    var _device_memory_impl_ptr: UnsafePointer[NoneType]
+    var _device_memory_impl_ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    fn __init__(out self) raises:
+    def __init__(out self) raises:
         """Default constructor for AnyTensor."""
         self._device = Device()
         self._spec = TensorSpec(DType.uint8, 0)
         self._name = None
-        self._data = UnsafePointer[UInt8]()
-        self._device_memory_impl_ptr = UnsafePointer[NoneType]()
+        self._data = null_ptr[UInt8]()
+        self._device_memory_impl_ptr = null_ptr[NoneType]()
 
     @implicit
-    fn __init__(out self, owned device_tensor: DeviceTensor):
+    def __init__(out self, var device_tensor: DeviceTensor):
         """Creates AnyTensor from a DeviceTensor.
 
         Args:
             device_tensor: DeviceTensor to construct AnyTensor from.
         """
         self._device = device_tensor.device()
-        self._spec = device_tensor.spec
+        self._spec = device_tensor.spec.copy()
         self._name = device_tensor.name()
         self._data = device_tensor.unsafe_ptr()
         var tmp = device_tensor^
@@ -78,25 +80,14 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         _ = tmp^
         self._device_memory_impl_ptr = tmp_dm^._steal_impl_ptr()
 
-    @doc_private
-    fn __copyinit__(out self, existing: Self):
-        constrained[False, "AnyTensor is non-copyable"]()
-        self._device = existing._device
-        self._spec = existing._spec
-        self._name = existing._name
-        self._data = existing._data
-        self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move constructor for AnyTensor.
 
         Args:
@@ -109,9 +100,9 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         self._device_memory_impl_ptr = existing._device_memory_impl_ptr
 
     @implicit
-    fn __init__[
+    def __init__[
         type: DType, rank: Int
-    ](out self, owned tensor: Tensor[type, rank]) raises:
+    ](out self, var tensor: Tensor[type, rank]) raises:
         """Creates AnyTensor from a Tensor.
 
         Args:
@@ -119,7 +110,7 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         """
         self = Self(tensor^.to_device_tensor())
 
-    fn get_rank(self) -> Int:
+    def get_rank(self) -> Int:
         """Gets rank of the tensor.
 
         Returns:
@@ -127,7 +118,7 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         """
         return self._spec.rank()
 
-    fn spec(self) -> TensorSpec:
+    def spec(self) -> TensorSpec:
         """Gets the spec of the tensor.
 
         Returns:
@@ -135,23 +126,23 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         """
         return self._spec
 
-    fn _steal_ptr(owned self) -> UnsafePointer[UInt8]:
+    def _steal_ptr(var self) -> UnsafePointer[UInt8]:
         var ptr = self._data
-        self._data = UnsafePointer[UInt8]()
+        self._data = null_ptr[UInt8]()
         return ptr
 
-    fn to_device_tensor(owned self) raises -> DeviceTensor:
+    def to_device_tensor(var self) raises -> DeviceTensor:
         """Consumes this AnyTensor and converts it into a device tensor.
 
         Returns:
             DeviceTensor representation of AnyTensor.
         """
-        var spec = self._spec
+        var spec = self._spec.copy()
         return DeviceTensor(DeviceMemory(self^), spec)
 
-    fn to_tensor[
+    def to_tensor[
         type: DType, rank: Int
-    ](owned self) raises -> Tensor[type, rank]:
+    ](var self) raises -> Tensor[type, rank]:
         """Consumes this anytensor and convert it into a tensor.
 
         Parameters:
@@ -163,7 +154,7 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         """
         return self^.to_device_tensor().to_tensor[type, rank]()
 
-    fn take(mut self) raises -> Self:
+    def take(mut self) raises -> Self:
         """The returned value takes self's resources and replaces them with default
         initialized values.
 
@@ -172,25 +163,25 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         """
         var tmp = Self()
         swap(self, tmp)
-        return tmp
+        return tmp.copy()
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for AnyTensor."""
         _ = DeviceMemory(
             self._device_memory_impl_ptr, self._spec.bytecount(), self._device
         )
 
     @no_inline
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Gets the tensor as a string.
 
         Returns:
           A compact string of the tensor.
         """
 
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats this Tensor to the provided Writer.
 
@@ -204,7 +195,7 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
         writer.write("Tensor(")
 
         @parameter
-        fn write_dtype_and_shape():
+        def write_dtype_and_shape():
             writer.write("dtype=")
             writer.write(self._spec.dtype())
             writer.write(", ")
@@ -212,7 +203,7 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
             for i in range(self.get_rank()):
                 if i > 0:
                     writer.write("x")
-                writer.write(self._spec.shape[i])
+                writer.write(self._spec.shape()[i])
 
         var device_str = String(self._device)
         if "cpu" not in device_str:
@@ -223,97 +214,42 @@ struct AnyTensor(Stringable, Writable, Copyable, Movable):
             writer.write(")")
             return
 
-        @parameter
-        fn serialize[T: Writable](val: T):
-            writer.write(val)
-
-        @parameter
-        fn dispatcher[dt: DType]():
-            var shape = List[Int, hint_trivial_type=True]()
-            for i in range(self.get_rank()):
-                shape.append(self._spec.shape[i])
-            _serialize[serialize_fn=serialize, serialize_end_line=False](
-                self._data.bitcast[SIMD[dt, 1]](), shape
-            )
-
-        var type = self._spec.dtype()
-        try:
-
-            @parameter
-            if CompilationTarget.is_x86():
-                type._dispatch_custom[
-                    dispatcher,
-                    DType.bool,
-                    DType.int8,
-                    DType.uint8,
-                    DType.int16,
-                    DType.uint16,
-                    DType.int32,
-                    DType.uint32,
-                    DType.int64,
-                    DType.uint64,
-                    DType.bfloat16,
-                    DType.float16,
-                    DType.float32,
-                    DType.float64,
-                    DType.index,
-                ]()
-            else:
-                # Exclude DType.bfloat16, which is not supported on ARM
-                # architectures.
-                type._dispatch_custom[
-                    dispatcher,
-                    DType.bool,
-                    DType.int8,
-                    DType.uint8,
-                    DType.int16,
-                    DType.uint16,
-                    DType.int32,
-                    DType.uint32,
-                    DType.int64,
-                    DType.uint64,
-                    DType.float16,
-                    DType.float32,
-                    DType.float64,
-                    DType.index,
-                ]()
-        except err:
-            writer.write("<Error occured when formatting dtype>, ")
-            write_dtype_and_shape()
-
+        # Mojo 1.0 port: element-level serialization relied on
+        # std.utils._serialize and DType._dispatch_custom, which are gone.
+        # Summarize instead.
+        write_dtype_and_shape()
         writer.write(")")
 
 
-@value
-@register_passable("trivial")
-struct _CMojoValue:
-    var _ptr: UnsafePointer[NoneType]
+@fieldwise_init
+struct _CMojoValue(TrivialRegisterPassable, ImplicitlyCopyable):
+    var _ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias _destroy_func_type = fn (UnsafePointer[NoneType]) -> None
+    comptime _destroy_func_type = def (UnsafePointer[NoneType, MutUntrackedOrigin]) thin -> None
     var _destroy_func: Self._destroy_func_type
 
-    fn __init__(out self):
-        self._ptr = UnsafePointer[NoneType]()
+    def __init__(out self):
+        self._ptr = null_ptr[NoneType]()
         self._destroy_func = Self._destroy_pointee_wrapper[NoneType]
 
-    fn __init__[T: Movable](out self, ptr: UnsafePointer[T]):
+    def __init__[T: Movable & Deinitable](out self, ptr: UnsafePointer[T, MutUntrackedOrigin]):
         self._ptr = ptr.bitcast[NoneType]()
         self._destroy_func = Self._destroy_pointee_wrapper[T]
 
     @staticmethod
-    fn _destroy_pointee_wrapper[T: AnyType](ptr: UnsafePointer[NoneType]):
+    def _destroy_pointee_wrapper[T: Deinitable](ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         ptr.bitcast[T]().destroy_pointee()
 
     @staticmethod
-    fn _no_op_destructor[T: AnyType](ptr: UnsafePointer[NoneType]):
+    def _no_op_destructor[T: AnyType](ptr: UnsafePointer[NoneType]):
         pass
 
     @staticmethod
-    fn _free(ptr: UnsafePointer[NoneType]):
+    def _free(ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         external_call["KGEN_CompilerRT_MojoValueFreeBuffer", NoneType](ptr)
 
-    fn destroy(self):
-        if self._ptr:
+    def destroy(self):
+        if Int(self._ptr) != 0:
             self._destroy_func(self._ptr)
             self._free(self._ptr)
 
@@ -325,55 +261,47 @@ struct AnyMojoValue(Copyable, Movable):
     CAUTION: Experimental API.
     """
 
-    alias c_type = _CMojoValue
+    comptime c_type = _CMojoValue
     """Internal representation of Mojo object."""
 
     var _impl: Self.c_type
 
-    fn __init__(out self):
+    def __init__(out self):
         """Default constructor for MojoValue."""
         self._impl = _CMojoValue()
 
-    @doc_private
     @implicit
-    fn __init__(out self, impl: _CMojoValue):
-        self._impl = impl
+    def __init__(out self, impl: _CMojoValue):
+        self._impl = impl.copy()
 
-    fn __init__[T: Movable](out self, owned val: T):
+    def __init__[T: Movable & Deinitable](out self, var val: T):
         """Creates Type erased Mojo Value from T.
 
         Args:
             val: Object to type erase.
         """
         var ptr = external_call[
-            "KGEN_CompilerRT_MojoValueAllocateBuffer", UnsafePointer[T]
+            "KGEN_CompilerRT_MojoValueAllocateBuffer", UnsafePointer[T, MutUntrackedOrigin]
         ](sizeof[T](), alignof[T]())
         ptr.init_pointee_move(val^)
         self._impl = _CMojoValue(ptr)
 
-    @doc_private
-    fn __copyinit__(out self, existing: Self):
-        constrained[False, "AnyMojoValue is not copyable"]()
-        self._impl = existing._impl
 
     @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicit copies are unsupported for this resource type in the
+        Mojo 1.0 port (the 25.3 original trapped at compile time)."""
+        abort("copy() is not supported on this type")
 
-        Returns:
-            A copy of this value.
-        """
-        return self
-
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move constructor for AnyMojoValue.
 
         Args:
             existing: Instance to move from.
         """
-        self._impl = existing._impl
+        self._impl = existing._impl.copy()
 
-    fn take(mut self) -> Self:
+    def take(mut self) -> Self:
         """Returns the current value and initializes this object to default
         state.
 
@@ -384,14 +312,13 @@ struct AnyMojoValue(Copyable, Movable):
         swap(tmp, self)
         return tmp^
 
-    @doc_private
-    fn release(owned self) -> Self.c_type:
+    def release(var self) -> Self.c_type:
         """Release the underlying Mojo Value pointer. Caller is responsible for
         destroying the object."""
         var impl = exchange(self._impl, _CMojoValue())
         return impl
 
-    fn to[T: Movable](owned self) -> T:
+    def to[T: Movable](var self) -> T:
         """Consume this object and produces an instance of T. This doesn't do
         any type check and assumes this AnyMojoValue was created from T.
 
@@ -402,24 +329,24 @@ struct AnyMojoValue(Copyable, Movable):
         self._impl._destroy_func = _CMojoValue._no_op_destructor[T]
         return value^
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for AnyMojoValue."""
         self._impl.destroy()
 
 
-@value
-struct AnyMemory(Writable):
+@fieldwise_init
+struct AnyMemory(Copyable, Movable, Writable):
     """A generic representation which can either be a Driver Tensor or Mojo object.
     """
 
     var _value: Variant[AnyTensor, AnyMojoValue]
 
-    fn __init__(out self):
+    def __init__(out self):
         "Default constructor for AnyMemory."
         self._value = AnyMojoValue()
 
     @implicit
-    fn __init__(out self, owned device_tensor: DeviceTensor):
+    def __init__(out self, var device_tensor: DeviceTensor):
         """Creates AnyMemory from a DeviceTensor.
 
         Args:
@@ -428,9 +355,9 @@ struct AnyMemory(Writable):
         self._value = AnyTensor(device_tensor^)
 
     @implicit
-    fn __init__[
+    def __init__[
         type: DType, rank: Int
-    ](out self, owned tensor: Tensor[type, rank]) raises:
+    ](out self, var tensor: Tensor[type, rank]) raises:
         """Creates AnyMemory from a Tensor.
 
         Args:
@@ -439,7 +366,7 @@ struct AnyMemory(Writable):
         self._value = AnyTensor(tensor^)
 
     @implicit
-    fn __init__(out self, owned tensor: AnyTensor):
+    def __init__(out self, var tensor: AnyTensor):
         """Creates AnyMemory from a AnyTensor.
 
         Args:
@@ -448,7 +375,7 @@ struct AnyMemory(Writable):
         self._value = tensor^
 
     @implicit
-    fn __init__(out self, owned value: AnyMojoValue):
+    def __init__(out self, var value: AnyMojoValue):
         """Creates AnyMemory from AnyMojoValue.
 
         Args:
@@ -456,7 +383,7 @@ struct AnyMemory(Writable):
         """
         self._value = value^
 
-    fn is_tensor(self) -> Bool:
+    def is_tensor(self) -> Bool:
         """Check whether this contains a tensor.
 
         Returns:
@@ -464,7 +391,7 @@ struct AnyMemory(Writable):
         """
         return self._value.isa[AnyTensor]()
 
-    fn take_tensor(mut self) raises -> AnyTensor:
+    def take_tensor(mut self) raises -> AnyTensor:
         """Take tensor from object. Further access to this object is
             undefined behavior.
 
@@ -473,7 +400,7 @@ struct AnyMemory(Writable):
         """
         return self._value[AnyTensor].take()
 
-    fn take(mut self) -> Self:
+    def take(mut self) -> Self:
         """The returned value takes self's resources and replaces them with
         default initialized values.
 
@@ -484,7 +411,7 @@ struct AnyMemory(Writable):
         swap(tmp, self)
         return tmp^
 
-    fn to_device_tensor(owned self) raises -> DeviceTensor:
+    def to_device_tensor(var self) raises -> DeviceTensor:
         """Consume this object and produces and instance of DeviceTensor.
         Only valid if this was created from DeviceTensor.
 
@@ -494,7 +421,7 @@ struct AnyMemory(Writable):
         var tmp = self^
         return tmp.take_tensor().to_device_tensor()
 
-    fn to[T: Movable](owned self) -> T:
+    def to[T: Movable](var self) -> T:
         """Consume this object and produces an instance of T. This doesn't do
         any type check beyond whether this is a AnyTensor or not,
         and if not assume this was created from T.
@@ -506,7 +433,7 @@ struct AnyMemory(Writable):
         var value = tmp.take_value()
         return value.to[T]()
 
-    fn take_value(mut self) -> AnyMojoValue:
+    def take_value(mut self) -> AnyMojoValue:
         """Take value from object. Further access to this object is undefined
         behavior.
 
@@ -516,11 +443,11 @@ struct AnyMemory(Writable):
         return self._value[AnyMojoValue].take()
 
     @no_inline
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Gets this value as a string."""
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats the string representation of this value to the provided
         Writer.

@@ -24,7 +24,7 @@ For example, the basic code you need to create tensor on CPU looks like this:
 
 ```mojo
 from nabla.compiler.driver import Tensor, cpu
-from testing import assert_equal
+from std.testing import assert_equal
 from nabla.compiler.tensor import TensorShape
 
 def main():
@@ -42,25 +42,11 @@ def main():
 ```
 """
 
-from nabla.compiler._tensor_utils import (
-    DynamicTensor,
-    ManagedTensorSlice,
-    StaticTensorSpec,
-    InputTensor,
-    OutputTensor,
-    IOSpec,
-    Input,
-    Output,
-    MutableInput,
-)
+# (ManagedTensorSlice re-exports removed in the Mojo 1.0 port)
 from nabla.compiler.tensor import RuntimeTensorSpec
 
-from ._accelerator import (
-    accelerator,
-    accelerator_count,
-    Accelerator,
-    CompiledDeviceKernel,
-)
+# GPU support (._accelerator) is not available in the Mojo 1.0 port:
+# it depended on MAX's gpu.host and runtime.asyncrt.DeviceContextPtr.
 from .anytensor import AnyMemory, AnyMojoValue, AnyTensor
 from .device import Device, cpu
 from .device_memory import DeviceMemory, DeviceTensor

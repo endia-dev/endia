@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from collections import Dict
+import nabla.compiler as compiler
+from std.collections import Dict
 
 from nabla.core.device_array import DeviceArray, ArrayImpl
 from nabla.ops.utils import register_unary_op, RuntimeInfo
@@ -21,23 +21,23 @@ from nabla.ops.binary_ops import mul, div
 
 struct Sin:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return compiler.graph.ops.sin(args[0])
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Sin"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(mul(cos(primals[0]), tangent))
+        return [mul(cos(primals[0]), tangent)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         result: DeviceArray,
@@ -45,7 +45,7 @@ struct Sin:
         return mul(cos(primals[0]), tangents[0])
 
 
-fn sin(arg: DeviceArray) raises -> DeviceArray:
+def sin(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[Sin.maxpr, Sin.vjp, Sin.jvp, Sin.eagerxpr](
         arg, "sin"
     )
@@ -53,23 +53,23 @@ fn sin(arg: DeviceArray) raises -> DeviceArray:
 
 struct Cast:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return compiler.graph.ops.cast(args[0], array.dtype())
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Cast"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(cast(tangent, primals[0].impl[].spec.dtype()))
+        return [cast(tangent, primals[0].impl[].spec.dtype())]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -77,7 +77,7 @@ struct Cast:
         return cast(tangents[0], array.impl[].spec.dtype())
 
 
-fn cast(arg: DeviceArray, dtype: DType) raises -> DeviceArray:
+def cast(arg: DeviceArray, dtype: DType) raises -> DeviceArray:
     return register_unary_op[Cast.maxpr, Cast.vjp, Cast.jvp, Cast.eagerxpr](
         arg, "cast" + String(dtype)
     )
@@ -85,23 +85,23 @@ fn cast(arg: DeviceArray, dtype: DType) raises -> DeviceArray:
 
 struct Negate:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return -args[0]
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Negate"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(negate(tangent))
+        return [negate(tangent)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -109,7 +109,7 @@ struct Negate:
         return negate(tangents[0])
 
 
-fn negate(arg: DeviceArray) raises -> DeviceArray:
+def negate(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[
         Negate.maxpr, Negate.vjp, Negate.jvp, Negate.eagerxpr
     ](arg, "negate")
@@ -117,23 +117,23 @@ fn negate(arg: DeviceArray) raises -> DeviceArray:
 
 struct Cos:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return compiler.graph.ops.cos(args[0])
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Cos"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(negate(mul(sin(primals[0]), tangent)))
+        return [negate(mul(sin(primals[0]), tangent))]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -141,7 +141,7 @@ struct Cos:
         return negate(mul(sin(primals[0]), tangents[0]))
 
 
-fn cos(arg: DeviceArray) raises -> DeviceArray:
+def cos(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[Cos.maxpr, Cos.vjp, Cos.jvp, Cos.eagerxpr](
         arg, "cos"
     )
@@ -149,24 +149,24 @@ fn cos(arg: DeviceArray) raises -> DeviceArray:
 
 struct ReLU:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return compiler.graph.ops.relu(args[0])
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for ReLU"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
         var mask = gt_zero(primals[0])
-        return List(mul(mask, tangent))
+        return [mul(mask, tangent)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -175,7 +175,7 @@ struct ReLU:
         return mul(mask, tangents[0])
 
 
-fn relu(arg: DeviceArray) raises -> DeviceArray:
+def relu(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[ReLU.maxpr, ReLU.vjp, ReLU.jvp, ReLU.eagerxpr](
         arg, "relu"
     )
@@ -183,23 +183,23 @@ fn relu(arg: DeviceArray) raises -> DeviceArray:
 
 struct Log:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return compiler.graph.ops.log(args[0])
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for Log"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(div(tangent, primals[0]))
+        return [div(tangent, primals[0])]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -207,7 +207,7 @@ struct Log:
         return div(tangents[0], primals[0])
 
 
-fn log(arg: DeviceArray) raises -> DeviceArray:
+def log(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[Log.maxpr, Log.vjp, Log.jvp, Log.eagerxpr](
         arg, "log"
     )
@@ -215,24 +215,24 @@ fn log(arg: DeviceArray) raises -> DeviceArray:
 
 struct GreaterThanZero:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         var zeros = args[0] - args[0]
         return compiler.graph.ops.greater(args[0], zeros)
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for GreaterThanZero"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
         raise "VJP for GreaterThanZero is not implemented"
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         array: DeviceArray,
@@ -240,7 +240,7 @@ struct GreaterThanZero:
         raise "JVP for GreaterThanZero is not implemented"
 
 
-fn gt_zero(arg: DeviceArray) raises -> DeviceArray:
+def gt_zero(arg: DeviceArray) raises -> DeviceArray:
     return register_unary_op[
         GreaterThanZero.maxpr,
         GreaterThanZero.vjp,
@@ -251,23 +251,23 @@ fn gt_zero(arg: DeviceArray) raises -> DeviceArray:
 
 struct IncrBatchDimCtr:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return args[0]
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for IncrBatchDimCtr"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(decr_batch_dim_ctr(tangent))
+        return [decr_batch_dim_ctr(tangent)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         result: DeviceArray,
@@ -275,7 +275,7 @@ struct IncrBatchDimCtr:
         return incr_batch_dim_ctr(tangents[0])
 
 
-fn incr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
+def incr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
     if arg.batch_dim_ctr() == len(arg.shape()):
         raise "Cannot incr_batch_dim_ctr, batch_dim_ctr is already full"
 
@@ -286,31 +286,30 @@ fn incr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
         IncrBatchDimCtr.eagerxpr,
     ](arg, "incr_batch_dim_ctr")
     res.batch_dim_ctr_(res.batch_dim_ctr() + 1)
-    res.impl[].name = (
-        "{" + String(res.batch_dim_ctr()) + "}" + res.impl[].name[3:]
-    )
+    var _newname = "{" + String(res.batch_dim_ctr()) + "}" + res.impl[].name[byte=3:]
+    res.impl[].name = _newname^
     return res
 
 
 struct DecrBatchDimCtr:
     @staticmethod
-    fn maxpr(
+    def maxpr(
         args: List[compiler.graph.Symbol], array: DeviceArray
     ) raises -> compiler.graph.Symbol:
         return args[0]
 
     @staticmethod
-    fn eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
+    def eagerxpr(mut curr: DeviceArray, args: List[DeviceArray]) raises -> None:
         raise "Eager execution is not supported for DecrBatchDimCtr"
 
     @staticmethod
-    fn vjp(
+    def vjp(
         primals: List[DeviceArray], tangent: DeviceArray, array: DeviceArray
     ) raises -> List[DeviceArray]:
-        return List(incr_batch_dim_ctr(tangent))
+        return [incr_batch_dim_ctr(tangent)]
 
     @staticmethod
-    fn jvp(
+    def jvp(
         primals: List[DeviceArray],
         tangents: List[DeviceArray],
         result: DeviceArray,
@@ -318,7 +317,7 @@ struct DecrBatchDimCtr:
         return decr_batch_dim_ctr(tangents[0])
 
 
-fn decr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
+def decr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
     if arg.batch_dim_ctr() == 0:
         raise "Cannot decr_batch_dim_ctr, batch_dim_ctr is already 0"
 
@@ -329,7 +328,6 @@ fn decr_batch_dim_ctr(arg: DeviceArray) raises -> DeviceArray:
         DecrBatchDimCtr.eagerxpr,
     ](arg, "decr_batch_dim_ctr")
     res.batch_dim_ctr_(res.batch_dim_ctr() - 1)
-    res.impl[].name = (
-        "{" + String(res.batch_dim_ctr()) + "}" + res.impl[].name[3:]
-    )
+    var _newname = "{" + String(res.batch_dim_ctr()) + "}" + res.impl[].name[byte=3:]
+    res.impl[].name = _newname^
     return res

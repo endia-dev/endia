@@ -12,22 +12,22 @@
 # ===----------------------------------------------------------------------=== #
 """Library for graph Symbol Types."""
 
-from collections import Optional
+from std.collections import Optional
 
 import _mlir
 from nabla.compiler.tensor import TensorSpec
-from collections.string import StaticString
+from std.collections.string import StaticString
 
-from utils.variant import Variant
+from std.utils.variant import Variant
 
-import ._c
+from . import _c
 
 
-fn _dyn() -> Int64:
+def _dyn() -> Int64:
     return _c.dim_type_new_dynamic()
 
 
-@value
+@fieldwise_init
 struct DynamicDim(Copyable, Movable):
     """A dynamic tensor dimension.
 
@@ -45,7 +45,7 @@ struct DynamicDim(Copyable, Movable):
     pass
 
 
-@value
+@fieldwise_init
 struct SymbolicDim(Copyable, Movable):
     """A symbolic tensor dimension.
 
@@ -65,7 +65,7 @@ struct SymbolicDim(Copyable, Movable):
     var name: String
     """The name of the dimension."""
 
-    fn __eq__(self, other: SymbolicDim) -> Bool:
+    def __eq__(self, other: SymbolicDim) -> Bool:
         """Whether the dimension is the same as another symbolic dimension.
 
         Symbolic dimensions with the same name are interpreted as the same
@@ -82,7 +82,7 @@ struct SymbolicDim(Copyable, Movable):
         return self.name == other.name
 
 
-@value
+@fieldwise_init
 struct StaticDim(Copyable, Movable):
     """A static tensor dimension.
 
@@ -98,15 +98,15 @@ struct StaticDim(Copyable, Movable):
     """The size of the static dimension."""
 
     @implicit
-    fn __init__(out self, dim: Int):
+    def __init__(out self, dim: Int):
         """Int conversion constructor.
 
         Args:
             dim: The size of the static dimension.
         """
-        self.dim = dim
+        self.dim = Int64(dim)
 
-    fn __eq__(self, other: StaticDim) -> Bool:
+    def __eq__(self, other: StaticDim) -> Bool:
         """Whether the dimension has the same size as another dimension.
 
         Args:
@@ -118,8 +118,8 @@ struct StaticDim(Copyable, Movable):
         return self.dim == other.dim
 
 
-@value
-struct Dim(Copyable, Movable, Writable, Stringable):
+@fieldwise_init
+struct Dim(Copyable, Movable, Writable):
     """A tensor dimension.
 
     Tensor dimensions can be
@@ -161,7 +161,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
     """The dimension data."""
 
     @implicit
-    fn __init__(out self, dim: Int):
+    def __init__(out self, dim: Int):
         """Int static dimension conversion constructor.
 
         Args:
@@ -170,7 +170,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         self.value = StaticDim(dim)
 
     @implicit
-    fn __init__(out self, name: StringLiteral):
+    def __init__(out self, name: StringLiteral):
         """Named symbolic dimension conversion constructor.
 
         Args:
@@ -179,7 +179,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         self.value = SymbolicDim(String(name))
 
     @staticmethod
-    fn static(dim: Int64) -> Self:
+    def static(dim: Int64) -> Self:
         """Explicitly constructs a static dimension.
 
         Args:
@@ -191,7 +191,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         return Self(StaticDim(dim))
 
     @staticmethod
-    fn symbolic(name: String) -> Self:
+    def symbolic(name: String) -> Self:
         """Explicitly constructs a symbolic dimension.
 
         Args:
@@ -203,7 +203,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         return Self(SymbolicDim(name))
 
     @staticmethod
-    fn dynamic() -> Self:
+    def dynamic() -> Self:
         """Explicitly constructs a dynamic dimension.
 
         Returns:
@@ -211,7 +211,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return Self(DynamicDim())
 
-    fn is_dynamic(self) -> Bool:
+    def is_dynamic(self) -> Bool:
         """Checks whether or not the dimension is a dynamic dimension.
 
         Returns:
@@ -219,7 +219,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return self.value.isa[DynamicDim]()
 
-    fn is_static(self) -> Bool:
+    def is_static(self) -> Bool:
         """Checks whether or not the dimension is a static dimension.
 
         Returns:
@@ -227,7 +227,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return self.value.isa[StaticDim]()
 
-    fn is_symbolic(self) -> Bool:
+    def is_symbolic(self) -> Bool:
         """Whether or not the dimension is a symbolic dimension.
 
         Returns:
@@ -235,7 +235,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return self.value.isa[SymbolicDim]()
 
-    fn num_elements(self) -> Int64:
+    def num_elements(self) -> Int64:
         """Returns the number of elements in the dimension, if known.
 
         Returns:
@@ -245,7 +245,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return self.value[StaticDim].dim if self.is_static() else _dyn()
 
-    fn maybe_num_elements(self) raises -> Optional[Int64]:
+    def maybe_num_elements(self) raises -> Optional[Int64]:
         """Returns the number of elements in the dimension, if known.
 
         Returns:
@@ -256,7 +256,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
             return self.value[StaticDim].dim
         return None
 
-    fn __eq__(self, other: Dim) -> Bool:
+    def __eq__(self, other: Dim) -> Bool:
         """Checks whether two dimensions are equal.
 
         Dimensions are equal if they are the same dimension type
@@ -284,7 +284,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
                 and self.value[StaticDim] == other.value[StaticDim]
             )
 
-    fn __ne__(self, other: Dim) -> Bool:
+    def __ne__(self, other: Dim) -> Bool:
         """Checks whether two dimensions are not equal.
 
         The inverse of __eq__.
@@ -297,7 +297,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
         """
         return not (self == other)
 
-    fn to_mlir(self, ctx: _mlir.Context) -> _mlir.Attribute:
+    def to_mlir(self, ctx: _mlir.Context) -> _mlir.Attribute:
         """Creates an _mlir.Attribute representing this dimension.
 
         This is used internally when constructing tensor _mlir types.
@@ -321,7 +321,7 @@ struct Dim(Copyable, Movable, Writable, Stringable):
             return _c.dim_new_static(ctx, dim)
 
     @staticmethod
-    fn from_mlir(dim_attr: _mlir.Attribute) raises -> Dim:
+    def from_mlir(dim_attr: _mlir.Attribute) raises -> Dim:
         """Constructs a dimension from an _mlir Attribute.
 
         Args:
@@ -343,15 +343,15 @@ struct Dim(Copyable, Movable, Writable, Stringable):
             )
             raise "Unsupported dim type: algebraic dimension"
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Creates a string representation of the dimension.
 
         Returns:
             A human-readable string of the dimension.
         """
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats a description of the DeviceMemory to the provided Writer.
 
@@ -370,7 +370,6 @@ struct Dim(Copyable, Movable, Writable, Stringable):
             return writer.write(self.value[StaticDim].dim)
 
 
-@value
 struct TensorType(Copyable, Movable):
     """A symbolic tensor type.
 
@@ -398,7 +397,7 @@ struct TensorType(Copyable, Movable):
     # ===------------------------------------------------------------------=== #
 
     @implicit
-    fn __init__(out self, dtype: DType):
+    def __init__(out self, dtype: DType):
         """Constructs a 0-d tensor type.
 
         Args:
@@ -407,7 +406,7 @@ struct TensorType(Copyable, Movable):
         self.dtype = dtype
         self.dims = List[Dim]()
 
-    fn __init__(out self, dtype: DType, *dims: Dim):
+    def __init__(out self, dtype: DType, *dims: Dim):
         """Constructs a tensor type.
 
         Args:
@@ -418,9 +417,9 @@ struct TensorType(Copyable, Movable):
         self.dtype = dtype
         self.dims = List[Dim](capacity=len(dims))
         for d in dims:
-            self.dims.append(d[])
+            self.dims.append(d.copy())
 
-    fn __init__(out self, dtype: DType, dims: List[Dim]):
+    def __init__(out self, dtype: DType, dims: List[Dim]):
         """Constructs a ranked tensor type.
 
         Args:
@@ -429,14 +428,14 @@ struct TensorType(Copyable, Movable):
                   is the rank of the tensor.
         """
         self.dtype = dtype
-        self.dims = dims
+        self.dims = dims.copy()
 
     # ===------------------------------------------------------------------=== #
     # Auxiliary factories
     # ===------------------------------------------------------------------=== #
 
     @implicit
-    fn __init__(out self, spec: TensorSpec):
+    def __init__(out self, spec: TensorSpec):
         """Constructs a tensor type from a TensorSpec.
 
         Since TensorSpec can only contain static shapes, this will always
@@ -447,10 +446,10 @@ struct TensorType(Copyable, Movable):
         """
         var dims = List[Dim](capacity=spec.rank())
         for i in range(spec.rank()):
-            dims.append(Dim.static(spec[i]))
+            dims.append(Dim.static(Int64(spec[i])))
         self = Self(spec.dtype(), dims)
 
-    fn to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
+    def to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
         """Converts to an _mlir.Type instance.
 
         Args:
@@ -470,7 +469,7 @@ struct TensorType(Copyable, Movable):
         )
 
     @staticmethod
-    fn from_mlir(t: _mlir.Type) raises -> Self:
+    def from_mlir(t: _mlir.Type) raises -> Self:
         """Constructs a tensor type from an _mlir type.
 
         Args:
@@ -495,7 +494,7 @@ struct TensorType(Copyable, Movable):
     # Basic accessors
     # ===------------------------------------------------------------------=== #
 
-    fn is_static(self) -> Bool:
+    def is_static(self) -> Bool:
         """Checks whether the tensor type has a fully static shape or not.
 
         A tensor must have all of its dimensions be `static` (or be 0-dimensional)
@@ -509,7 +508,7 @@ struct TensorType(Copyable, Movable):
                 return False
         return True
 
-    fn rank(self) -> Int:
+    def rank(self) -> Int:
         """Gets the rank of the tensor type.
 
         Returns:
@@ -519,7 +518,7 @@ struct TensorType(Copyable, Movable):
         """
         return len(self.dims)
 
-    fn dim(self, pos: Int) raises -> Dim:
+    def dim(self, pos: Int) raises -> Dim:
         """Gets the pos'th dimension of the tensor type.
 
         Supports negative-indexing, ie. `t.dim(-1)` will give the last
@@ -536,7 +535,7 @@ struct TensorType(Copyable, Movable):
         """
         return self.dims[pos + (self.rank() if pos < 0 else 0)]
 
-    fn __eq__(self, other: TensorType) -> Bool:
+    def __eq__(self, other: TensorType) -> Bool:
         """Checks whether the two tensors are identical (same rank, type, shape).
 
         Args:
@@ -559,7 +558,7 @@ struct TensorType(Copyable, Movable):
     # Utilities
     # ===------------------------------------------------------------------=== #
 
-    fn num_elements(self) -> Int64:
+    def num_elements(self) -> Int64:
         """Counts the total number of elements in the tensor type.
 
         For a static tensor, returns the product of all static dimensions.
@@ -580,7 +579,7 @@ struct TensorType(Copyable, Movable):
             n *= self.dims[i].num_elements()
         return n
 
-    fn cast(self, dtype: DType) -> Self:
+    def cast(self, dtype: DType) -> Self:
         """Constructs a new tensor type of the same shape with the new dtype.
 
         Args:
@@ -592,7 +591,6 @@ struct TensorType(Copyable, Movable):
         return Self(dtype, self.dims)
 
 
-@value
 struct ListType(Copyable, Movable):
     """A type representing a flat list of tensor values.
 
@@ -615,10 +613,10 @@ struct ListType(Copyable, Movable):
 
     @always_inline
     @implicit
-    fn __init__(out self, eltype: TensorType):
-        self.eltype = eltype
+    def __init__(out self, eltype: TensorType):
+        self.eltype = eltype.copy()
 
-    fn to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
+    def to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
         """Converts to an _mlir.Type instance.
 
         Args:
@@ -630,13 +628,13 @@ struct ListType(Copyable, Movable):
         return _c.list_type_new(ctx, self.eltype.to_mlir(ctx))
 
 
-@value
+@fieldwise_init
 struct _OpaqueType(Copyable, Movable):
     """A type representing an opaque type."""
 
     var name: String
 
-    fn to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
+    def to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
         """Converts to an _mlir.Type instance.
 
         Args:
@@ -648,7 +646,7 @@ struct _OpaqueType(Copyable, Movable):
         return _c.opaque_type_new(ctx, self.name)
 
     @staticmethod
-    fn from_mlir(t: _mlir.Type) -> Self:
+    def from_mlir(t: _mlir.Type) -> Self:
         """Constructs an opaque type from an _mlir type.
 
         Args:
@@ -661,7 +659,7 @@ struct _OpaqueType(Copyable, Movable):
         return Self(name)
 
 
-@value
+@fieldwise_init
 struct Type(Copyable, Movable):
     """Represents any possible type for Graph Symbol values.
 
@@ -674,33 +672,33 @@ struct Type(Copyable, Movable):
     """The type data."""
 
     @implicit
-    fn __init__(out self, t: TensorType):
+    def __init__(out self, t: TensorType):
         """Constructs a type from a tensor type.
 
         Args:
             t: The tensor type.
         """
-        self.type = t
+        self.type = t.copy()
 
     @implicit
-    fn __init__(out self, t: ListType):
+    def __init__(out self, t: ListType):
         """Constructs a type from a list type.
 
         Args:
             t: The list type.
         """
-        self.type = t
+        self.type = t.copy()
 
     @implicit
-    fn __init__(out self, t: _OpaqueType):
+    def __init__(out self, t: _OpaqueType):
         """Constructs a type from an opaque typ.
 
         Args:
             t: The opaque type.
         """
-        self.type = t
+        self.type = t.copy()
 
-    fn list(self) raises -> ListType:
+    def list(self) raises -> ListType:
         """Extracts the type as a list type.
 
         This doesn't have any impact at graph execution time, it just retrieves
@@ -716,7 +714,7 @@ struct Type(Copyable, Movable):
             raise "Not a list type!"
         return self.type[ListType]
 
-    fn tensor(self) raises -> TensorType:
+    def tensor(self) raises -> TensorType:
         """Extracts the type as a tensor type.
 
         This doesn't have any impact at graph execution time, it just retrieves
@@ -730,9 +728,9 @@ struct Type(Copyable, Movable):
         """
         if not self.type.isa[TensorType]():
             raise "Not a tensor type!"
-        return self.type[TensorType]
+        return self.type[TensorType].copy()
 
-    fn _opaque(self) raises -> _OpaqueType:
+    def _opaque(self) raises -> _OpaqueType:
         """Extracts the type as an opaque type.
 
         This doesn't have any impact at graph execution time, it just retrieves
@@ -748,7 +746,7 @@ struct Type(Copyable, Movable):
             raise "Not an opaque type!"
         return self.type[_OpaqueType]
 
-    fn dims(self) -> List[Dim]:
+    def dims(self) -> List[Dim]:
         """Returns a list of all dims referenced by the type.
 
         This doesn't have any impact at graph execution time, it just retrieves
@@ -762,9 +760,9 @@ struct Type(Copyable, Movable):
         if not self.type.isa[TensorType]():
             return List[Dim]()
 
-        return self.type[TensorType].dims
+        return self.type[TensorType].dims.copy()
 
-    fn to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
+    def to_mlir(self, ctx: _mlir.Context) -> _mlir.Type:
         """Converts to an _mlir.Type instance.
 
         Args:
@@ -782,7 +780,7 @@ struct Type(Copyable, Movable):
             return self.type[_OpaqueType].to_mlir(ctx)
 
     @staticmethod
-    fn from_mlir(t: _mlir.Type) raises -> Self:
+    def from_mlir(t: _mlir.Type) raises -> Self:
         """Constructs a type from an _mlir type.
 
         Args:

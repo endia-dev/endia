@@ -11,71 +11,71 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
-from time import perf_counter
+import std.math as math
+from std.time import perf_counter
 import nabla
 
 
-fn test_vmap() raises:
-    fn dot(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        var res = List(nabla.sum(args[0] * args[1], axis=List(0)))
-        return res
+def test_vmap() raises:
+    def dot(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        var res: List[nabla.Array] = [nabla.sum(args[0] * args[1], axis=[0])]
+        return res.copy()
 
-    fn mv_prod(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        var res = nabla.vmap(dot, List(nabla.none, 1))(args)
-        return res
+    def mv_prod(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        var res = nabla.vmap(dot, [nabla.none, 1])(args)
+        return res.copy()
 
-    fn mm_prod(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        var res = nabla.vmap(mv_prod, List(0, nabla.none))(args)
-        return res
+    def mm_prod(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        var res = nabla.vmap(mv_prod, [0, nabla.none])(args)
+        return res.copy()
 
-    fn batched_matmul(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        var res = nabla.vmap(mm_prod, List(0, nabla.none))(List(args[0], args[1]))[0]
-        return List(res)
+    def batched_matmul(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        var res = nabla.vmap(mm_prod, [0, nabla.none])([args[0], args[1]])[0]
+        return [res]
 
     var batch_a = nabla.arange((2, 3, 4), DType.float32)
     var mat_b = nabla.arange((4, 5), DType.float32)
 
-    print(nabla.xpr(batched_matmul)(List(batch_a, mat_b)))
-    var res = batched_matmul(List(batch_a, mat_b))
+    print(nabla.xpr(batched_matmul)([batch_a, mat_b]))
+    var res = batched_matmul([batch_a, mat_b])
     print(res[0])
 
 
-def test_vmap2():
-    fn vv(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return List(nabla.sum(args[0] * args[1]))
+def test_vmap2() raises:
+    def vv(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return [nabla.sum(args[0] * args[1])]
 
-    fn mv(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return nabla.vmap(vv, List(0, nabla.none))(args)
+    def mv(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return nabla.vmap(vv, [0, nabla.none])(args)
 
-    fn mm(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return nabla.vmap(mv, List(nabla.none, 1), List(1))(args)
+    def mm(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return nabla.vmap(mv, [nabla.none, 1], [1])(args)
 
     var a = nabla.arange((2, 3), DType.float32)
     var b = nabla.arange((3, 4), DType.float32)
 
-    var res = mm(List(a, b))[0]
+    var res = mm([a, b])[0]
     print(res)
 
 
-def test_vmap3():
-    fn br_foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return List(nabla.broadcast_to(args[0], List(1, 3, 9)))
+def test_vmap3() raises:
+    def br_foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return [nabla.broadcast_to(args[0], (1, 3, 9))]
 
-    var res = nabla.vmap(br_foo)(List(nabla.arange((2, 9), DType.float32)))[0]
+    var res = nabla.vmap(br_foo)([nabla.arange((2, 9), DType.float32)])[0]
     print(res)
 
 
-fn test_vmap4() raises:
-    fn dot(args: List[nabla.Array]) raises -> List[nabla.Array]:
-        return List(nabla.sum(args[0] * args[1], axis=List(0)))
+def test_vmap4() raises:
+    def dot(args: List[nabla.Array]) raises -> List[nabla.Array]:
+        return [nabla.sum(args[0] * args[1], axis=[0])]
 
-    var mv_prod = nabla.vmap(dot, List(nabla.none, 1))
-    var mm_prod = nabla.vmap(mv_prod, List(0, nabla.none))
-    var batched_matmul = nabla.vmap(mm_prod, List(0, nabla.none))
+    var mv_prod = nabla.vmap(dot, [nabla.none, 1])
+    var mm_prod = nabla.vmap(mv_prod, [0, nabla.none])
+    var batched_matmul = nabla.vmap(mm_prod, [0, nabla.none])
 
     var batch_a = nabla.arange((2, 3, 4), DType.float32)
     var mat_b = nabla.arange((4, 5), DType.float32)
 
-    var res = batched_matmul(List(batch_a, mat_b))[0]
+    var res = batched_matmul([batch_a, mat_b])[0]
     print(res)

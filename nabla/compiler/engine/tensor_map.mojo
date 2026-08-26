@@ -13,15 +13,14 @@
 """
 Defines the `TensorMap` type that holds input and output tensors for a model.
 """
-from sys.ffi import DLHandle
+from nabla.compiler._dlhandle import DLHandle
 
-from buffer import NDBuffer
-from nabla.compiler._utils import CString, call_dylib_func, exchange
+from std.buffer import NDBuffer
+from nabla.compiler._utils import null_ptr, CString, call_dylib_func, exchange
 from nabla.compiler.tensor import Tensor, TensorSpec
-from memory import UnsafePointer
-from memory.unsafe import bitcast
+from std.memory import UnsafePointer
+from std.memory.unsafe import bitcast
 
-from utils.write import _WriteBufferStack
 
 from ._context import CRuntimeContext
 from ._tensor_impl import EngineTensor
@@ -30,7 +29,7 @@ from .session import InferenceSession
 from .value import Value
 
 
-struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
+struct TensorMap(Copyable, Movable, SizedRaising, Writable):
     """
     Maps inputs and outputs to their respective names and can
     be used to supply and receive data to MAX Engine model.
@@ -45,14 +44,14 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
     var _lib: DLHandle
     var _session: InferenceSession
 
-    alias _NewTensorMapFnName = "M_newAsyncTensorMap"
-    alias _DeleteTensorMapKeysFnName = "M_deleteTensorMapKeys"
+    comptime _NewTensorMapFnName = "M_newAsyncTensorMap"
+    comptime _DeleteTensorMapKeysFnName = "M_deleteTensorMapKeys"
 
-    fn __init__(
+    def __init__(
         out self,
         ctx: CRuntimeContext,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Internal only. Use InferenceSession.new_tensor_map
         for external use.
@@ -71,11 +70,11 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         self._lib = lib
         self._session = session^
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CTensorMap,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Internal only. Use InferenceSession.new_tensor_map
         for external use.
@@ -88,42 +87,31 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
             session: Copy of InferenceSession from which this instance
                      was created.
         """
-        self._ptr = ptr
+        self._ptr = ptr.copy()
         self._lib = lib
         self._session = session^
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move contructor for TensorMap.
 
         Args:
             existing: Instance of TensorMap to move from.
         """
         self._ptr = exchange[CTensorMap](
-            existing._ptr, UnsafePointer[NoneType]()
+            existing._ptr, null_ptr[NoneType]()
         )
         self._lib = existing._lib
         self._session = existing._session^
 
-    fn __copyinit__(out self, existing: Self):
-        """Copy contructor for TensorMap.
-
-        Args:
-            existing: Instance of TensorMap to copy from.
-        """
-        self._ptr = existing._ptr.copy(existing._lib)
-        self._lib = existing._lib
-        self._session = existing._session
-
-    @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicitly construct a copy of self (copies the underlying map).
 
         Returns:
             A copy of this value.
         """
-        return self
+        return Self(self._ptr.copy(self._lib), self._lib, self._session)
 
-    fn borrow[type: DType](self, key: String, value: Tensor[type]) raises:
+    def borrow[type: DType](self, key: String, value: Tensor[type]) raises:
         """Borrow the given tensor into the map at the key location.
            User needs to make sure tensor is alive for
            the duration of map.
@@ -145,10 +133,10 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
             value.unsafe_ptr().bitcast[NoneType](), spec, self._lib
         )
 
-    fn borrow[
+    def borrow[
         type: DType
     ](
-        self, key: String, spec: TensorSpec, ptr: UnsafePointer[Scalar[type]]
+        self, key: String, spec: TensorSpec, ptr: UnsafePointer[Scalar[type], MutUntrackedOrigin]
     ) raises:
         """Borrow the given pointer into the map at the key location.
            User needs to make sure the backing array is alive for
@@ -175,7 +163,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
             self._lib,
         )
 
-    fn borrow(self, key: String, value: EngineTensorView) raises:
+    def borrow(self, key: String, value: EngineTensorView) raises:
         """Borrow the given tensor view into the map at the key location.
            User needs to make sure tensor backing the view is alive for
            the duration of map.
@@ -192,7 +180,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         )
         self._ptr.borrow_tensor_by_name(value.unsafe_ptr(), spec, self._lib)
 
-    fn borrow(self, key: String, value: EngineNumpyView) raises:
+    def borrow(self, key: String, value: EngineNumpyView) raises:
         """Borrow the given numpy view into the map at the key location.
            User needs to make sure numpy array backing the view is alive for
            the duration of map.
@@ -209,7 +197,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         )
         self._ptr.borrow_tensor_by_name(value.unsafe_ptr(), spec, self._lib)
 
-    fn borrow(self, key: String, value: Value) raises:
+    def borrow(self, key: String, value: Value) raises:
         """Borrow the given value into the map at the key location.
 
         User needs to make sure value is alive for the duration of the map.
@@ -220,7 +208,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         """
         self._ptr.borrow_value_by_name(key, value._ptr.ptr, self._lib)
 
-    fn _move_mojo_value[T: Movable](self, key: String, owned value: T) raises:
+    def _move_mojo_value[T: Movable](self, key: String, var value: T) raises:
         """Move the mojo value inside the map at the key location.
 
         Parameters:
@@ -232,7 +220,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         """
         self._ptr.move_mojo_value_by_name(key, value^, self._lib)
 
-    fn get[type: DType](self, key: String) raises -> Tensor[type]:
+    def get[type: DType](self, key: String) raises -> Tensor[type]:
         """Gets the tensor / numpy array indicated by the key.
            The value is copied and returned to the user.
 
@@ -250,7 +238,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         var tensor = mof_tensor.tensor[type]()
         return tensor^
 
-    fn _take_mojo_value[T: Movable](self, key: String) raises -> T:
+    def _take_mojo_value[T: Movable](self, key: String) raises -> T:
         """Gets the custom mojo value indicated by the key.
            The value is moved and returned to the user.
            The same key can't be requested again.
@@ -267,7 +255,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         var val = self.get_value(key)
         return val._take_mojo_value[T]()
 
-    fn buffer[
+    def buffer[
         type: DType
     ](self, key: String) raises -> NDBuffer[type, 1, MutableAnyOrigin]:
         """Gets a buffer to the tensor pointed by the key.
@@ -284,7 +272,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         var tensor_ptr = self._ptr.get_tensor_by_name(key, self._lib)
         return EngineTensor(tensor_ptr, self._lib, self._session).buffer[type]()
 
-    fn get_spec(self, key: String) raises -> TensorSpec:
+    def get_spec(self, key: String) raises -> TensorSpec:
         """Gets the spec of the tensor pointed by the key.
 
         Args:
@@ -298,7 +286,7 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         var mof_tensor = EngineTensor(tensor_ptr, self._lib, self._session)
         return mof_tensor.spec()
 
-    fn get_value(self, key: String) raises -> Value:
+    def get_value(self, key: String) raises -> Value:
         """Gets the value pointed by the key.
 
         Args:
@@ -311,14 +299,14 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         var value_ptr = self._ptr.get_value_by_name(key, self._lib)
         return Value(value_ptr, self._lib, self._session)
 
-    fn keys(self) -> List[String]:
+    def keys(self) -> List[String]:
         """Returns all held keys.
 
         Returns:
             A list with all contained keys.
         """
         var size: Int64 = 0
-        var keys_arr = self._ptr.keys(UnsafePointer(to=size), self._lib)
+        var keys_arr = self._ptr.keys(UnsafePointer(to=size).unsafe_origin_cast[MutUntrackedOrigin](), self._lib)
         var keys = List[String](capacity=Int(size))
         for i in range(Int(size)):
             keys.append(String(keys_arr[i]))
@@ -326,9 +314,9 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         call_dylib_func[NoneType](
             self._lib, Self._DeleteTensorMapKeysFnName, keys_arr
         )
-        return keys
+        return keys.copy()
 
-    fn __len__(self) raises -> Int:
+    def __len__(self) raises -> Int:
         """Gets number of elements in the map.
 
         Returns:
@@ -336,15 +324,15 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         """
         return self._ptr.size(self._lib)
 
-    fn _borrow_ptr(self) -> CTensorMap:
+    def _borrow_ptr(self) -> CTensorMap:
         return self._ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for the tensor map."""
         self._ptr.free(self._lib)
         _ = self._session^
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats a description of the DeviceMemory to the provided Writer.
 
@@ -356,53 +344,52 @@ struct TensorMap(Copyable, Movable, SizedRaising, Stringable, Writable):
         """
         try:
             var string = String()
-            var buffer = _WriteBufferStack(string)
-            buffer.write("{")
+            string.write("{")
             var keys = self.keys()
             for i in range(len(keys)):
                 if i > 0:
-                    buffer.write(",\n")
+                    string.write(",\n")
 
                 var key = keys[i]
                 var dtype = self.get_spec(key).dtype()
-                buffer.write("'", key, "' : ")
-                if dtype is DType.bool:
-                    buffer.write(self.get[DType.bool](key))
-                elif dtype is DType.uint8:
-                    buffer.write(self.get[DType.uint8](key))
-                elif dtype is DType.uint16:
-                    buffer.write(self.get[DType.uint16](key))
-                elif dtype is DType.uint32:
-                    buffer.write(self.get[DType.uint32](key))
-                elif dtype is DType.uint64:
-                    buffer.write(self.get[DType.uint64](key))
-                elif dtype is DType.int8:
-                    buffer.write(self.get[DType.int8](key))
-                elif dtype is DType.int16:
-                    buffer.write(self.get[DType.int16](key))
-                elif dtype is DType.int32:
-                    buffer.write(self.get[DType.int32](key))
-                elif dtype is DType.int64:
-                    buffer.write(self.get[DType.int64](key))
-                elif dtype is DType.float16:
-                    buffer.write(self.get[DType.float16](key))
-                elif dtype is DType.float32:
-                    buffer.write(self.get[DType.float32](key))
-                elif dtype is DType.float64:
-                    buffer.write(self.get[DType.float64](key))
+                string.write("'", key, "' : ")
+                if dtype == DType.bool:
+                    string.write(self.get[DType.bool](key))
+                elif dtype == DType.uint8:
+                    string.write(self.get[DType.uint8](key))
+                elif dtype == DType.uint16:
+                    string.write(self.get[DType.uint16](key))
+                elif dtype == DType.uint32:
+                    string.write(self.get[DType.uint32](key))
+                elif dtype == DType.uint64:
+                    string.write(self.get[DType.uint64](key))
+                elif dtype == DType.int8:
+                    string.write(self.get[DType.int8](key))
+                elif dtype == DType.int16:
+                    string.write(self.get[DType.int16](key))
+                elif dtype == DType.int32:
+                    string.write(self.get[DType.int32](key))
+                elif dtype == DType.int64:
+                    string.write(self.get[DType.int64](key))
+                elif dtype == DType.float16:
+                    string.write(self.get[DType.float16](key))
+                elif dtype == DType.float32:
+                    string.write(self.get[DType.float32](key))
+                elif dtype == DType.float64:
+                    string.write(self.get[DType.float64](key))
                 else:
-                    buffer.write(self.get[DType.uint8](key))
-                buffer.write("}")
-                buffer.flush()
+                    string.write(self.get[DType.uint8](key))
+                string.write("}")
+                pass
 
                 return writer.write(string)
         except:
             writer.write("{}")
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Returns a `String` representation of this `TensorMap`.
 
         Returns:
             A textual representation of this `TensorMap`.
         """
-        return String.write(self)
+        return String(self)

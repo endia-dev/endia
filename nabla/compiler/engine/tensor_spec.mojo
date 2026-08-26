@@ -14,19 +14,19 @@
 Defines `EngineTensorSpec` to define a model's input and output specs.
 """
 
-from collections import List
-from collections.optional import Optional
-from os import abort
-from sys.ffi import DLHandle
+from std.collections import List
+from std.collections.optional import Optional
+from std.os import abort
+from nabla.compiler._dlhandle import DLHandle
 
-from nabla.compiler._utils import call_dylib_func
+from nabla.compiler._utils import null_ptr, call_dylib_func
 from nabla.compiler.tensor import TensorSpec
 
 from ._tensor_spec_impl import CTensorSpec
 from .session import InferenceSession
 
 
-struct EngineTensorSpec(Stringable, Copyable, Movable):
+struct EngineTensorSpec(Copyable, Movable):
     """
     Describes the input and output tensor specifications of a
     [`Model`](/max/api/mojo/engine/model/Model).
@@ -46,9 +46,9 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
     var _lib: DLHandle
     var _session: InferenceSession
 
-    alias _NewTensorSpecFnName = "M_newTensorSpec"
+    comptime _NewTensorSpecFnName = "M_newTensorSpec"
 
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         """Copy constructor for Tensor Spec.
 
         Args:
@@ -63,15 +63,15 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         )
 
     @always_inline
-    fn copy(self) -> Self:
+    def copy(self) -> Self:
         """Explicitly construct a copy of self.
 
         Returns:
             A copy of this value.
         """
-        return self
+        return self.copy()
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Move constructor for Tensor Spec.
 
         Args:
@@ -81,11 +81,11 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         self._lib = existing._lib
         self._session = existing._session^
 
-    fn __init__(
+    def __init__(
         out self,
         ptr: CTensorSpec,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Construct EngineTensorSpec.
         Do not use this function directly.
@@ -101,12 +101,12 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         self._lib = lib
         self._session = session^
 
-    fn __init__(
+    def __init__(
         out self,
-        owned name: String,
+        var name: String,
         spec: TensorSpec,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Creates an instance of EngineTensorSpec.
         Do not use this function directly.
@@ -122,13 +122,13 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         var dtype = spec.dtype()
         var rank = spec.rank()
         var shape = List[Int64]()
-        var name_str = name.unsafe_cstr_ptr()
+        var name_str = name.as_c_string_slice().unsafe_ptr()
         for i in range(rank):
-            shape.append(spec[i])
+            shape.append(Int64(spec[i]))
         self._ptr = call_dylib_func[CTensorSpec](
             lib,
             Self._NewTensorSpecFnName,
-            shape.data,
+            shape.unsafe_ptr(),
             rank,
             dtype,
             name_str,
@@ -138,13 +138,13 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         self._lib = lib
         self._session = session^
 
-    fn __init__(
+    def __init__(
         out self,
         name: String,
         shape: Optional[List[Optional[Int]]],
         dtype: DType,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Creates an instance of EngineTensorSpec.
         Do not use this function directly.
@@ -172,19 +172,19 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         else:
             var casted_shape = List[Optional[Int64]]()
             for dim in shape.value():
-                if not dim[]:
+                if not dim:
                     casted_shape.append(None)
                 else:
-                    casted_shape.append(Int64(dim[].value()))
-            self = Self(name, casted_shape, dtype, lib, session)
+                    casted_shape.append(Int64(dim.value()))
+            self = Self(name, casted_shape.copy(), dtype, lib, session)
 
-    fn __init__(
+    def __init__(
         out self,
-        owned name: String,
+        var name: String,
         shape: Optional[List[Optional[Int64]]],
         dtype: DType,
         lib: DLHandle,
-        owned session: InferenceSession,
+        var session: InferenceSession,
     ):
         """Creates an instance of EngineTensorSpec.
         Do not use this function directly.
@@ -200,9 +200,9 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             session: Copy of InferenceSession from which this instance
                      was created.
         """
-        var name_str = name.unsafe_cstr_ptr()
+        var name_str = name.as_c_string_slice().unsafe_ptr()
         if shape:
-            var inner_shape = shape.value()
+            var inner_shape = shape.value().copy()
             var rank = len(inner_shape)
             var adjusted_shape = List[Int64]()
             adjusted_shape.reserve(rank)
@@ -210,13 +210,13 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             for i in range(rank):
                 var dim = inner_shape[i]
                 if not dim:
-                    adjusted_shape.append(dynamic_value)
+                    adjusted_shape.append(Int64(dynamic_value))
                 else:
-                    adjusted_shape.append(dim.value())
+                    adjusted_shape.append(Int64(dim.value()))
             self._ptr = call_dylib_func[CTensorSpec](
                 lib,
                 Self._NewTensorSpecFnName,
-                adjusted_shape.data,
+                adjusted_shape.unsafe_ptr(),
                 rank,
                 dtype,
                 name_str,
@@ -226,7 +226,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             self._ptr = call_dylib_func[CTensorSpec](
                 lib,
                 Self._NewTensorSpecFnName,
-                CTensorSpec.ptr_type(),
+                null_ptr[NoneType](),
                 CTensorSpec.get_dynamic_rank_value(lib),
                 dtype,
                 name_str,
@@ -236,7 +236,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         self._lib = lib
         self._session = session^
 
-    fn __getitem__(self, idx: Int) raises -> Optional[Int]:
+    def __getitem__(self, idx: Int) raises -> Optional[Int]:
         """Get the dimension at the given index.
 
         Args:
@@ -257,7 +257,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             return None
         return dim
 
-    fn rank(self) -> Optional[Int]:
+    def rank(self) -> Optional[Int]:
         """Gets the rank of spec.
 
         Returns:
@@ -267,7 +267,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             return None
         return self._ptr.get_rank(self._lib)
 
-    fn has_rank(self) -> Bool:
+    def has_rank(self) -> Bool:
         """Check if the spec has static rank.
 
         Returns:
@@ -275,7 +275,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         """
         return not self._ptr.is_dynamically_ranked(self._lib)
 
-    fn get_as_tensor_spec(self) raises -> TensorSpec:
+    def get_as_tensor_spec(self) raises -> TensorSpec:
         """Get the Mojo TensorSpec equivalent of Engine TensorSpec.
 
         Returns:
@@ -288,15 +288,15 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         if not rank_or:
             raise "tensors with dynamic rank cannot be converted to Mojo TensorSpec."
 
-        var shape = List[Int, hint_trivial_type=True]()
+        var shape = List[Int]()
         var rank = rank_or.value()
         for i in range(rank):
             shape.append(self[i].value())
         var dtype = self._ptr.get_dtype(self._lib)
         var spec = TensorSpec(dtype, shape)
-        return spec
+        return spec.copy()
 
-    fn get_name(self) -> String:
+    def get_name(self) -> String:
         """Gets the name of tensor corresponding to spec.
 
         Returns:
@@ -304,7 +304,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         """
         return self._ptr.get_name(self._lib)
 
-    fn get_dtype(self) -> DType:
+    def get_dtype(self) -> DType:
         """Gets the DType of tensor corresponding to spec.
 
         Returns:
@@ -312,7 +312,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
         """
         return self._ptr.get_dtype(self._lib)
 
-    fn get_shape(self) -> Optional[List[Optional[Int]]]:
+    def get_shape(self) -> Optional[List[Optional[Int]]]:
         """Gets the shape of tensor corresponding to spec.
 
         Returns:
@@ -340,7 +340,7 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
 
         return shape_list
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Gets the String representation of Spec.
 
         Returns:
@@ -356,19 +356,19 @@ struct EngineTensorSpec(Stringable, Copyable, Movable):
             _repr += "None x "
         else:
             for dim in shape_list.value():
-                if not dim[]:
+                if not dim:
                     _repr += "-1"
                 else:
-                    _repr += String(dim[].value())
+                    _repr += String(dim.value())
                 _repr += "x"
         _repr += String(self.get_dtype())
         _repr += "}"
         return _repr
 
-    fn _borrow_ptr(self) -> CTensorSpec:
+    def _borrow_ptr(self) -> CTensorSpec:
         return self._ptr
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destructor for EngineTensorSpec."""
         self._ptr.free(self._lib)
         _ = self._session^

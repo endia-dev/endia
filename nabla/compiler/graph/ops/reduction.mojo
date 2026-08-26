@@ -12,33 +12,34 @@
 # ===----------------------------------------------------------------------=== #
 """Ops that accumulate or reduce a tensor along an axis."""
 
-from collections import Optional
-from collections.string.string_slice import StaticString
+from std.collections import Optional
+from std.collections.string import StaticString
 
+from ..symbol import Symbol
 from ..error import error
 
 
-fn _reduce[
+def _reduce[
     op: StaticString
-](v: Symbol, owned axis: Int, dtype: Optional[DType] = None) raises -> Symbol:
+](v: Symbol, var axis: Int, dtype: Optional[DType] = None) raises -> Symbol:
     var g = v.graph()
     var v_type = v.tensor_type()
 
     if axis < 0:
         axis += v_type.rank()
     if not 0 <= axis < v_type.rank():
-        raise error(g, "axis out of range")
+        raise error(g.copy(), "axis out of range")
 
     v_type.dims[axis] = 1
     if dtype:
         v_type.dtype = dtype.value()
 
     return g.op(
-        String(op), List[Symbol](v, g.scalar[DType.int64](axis)), v_type
+        String(op), [v, g.scalar[DType.int64](Int64(axis))], v_type
     )
 
 
-def mean(v: Symbol, axis: Int = -1) -> Symbol:
+def mean(v: Symbol, axis: Int = -1) raises -> Symbol:
     """Reduces a symbolic tensor using a mean operation.
 
     Args:

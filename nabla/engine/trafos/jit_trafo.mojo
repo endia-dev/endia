@@ -11,8 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from memory import ArcPointer
-from utils import Variant
+from std.memory import ArcPointer
+from std.utils import Variant
 
 from nabla.api.array import Array
 from nabla.core.device_array import DeviceArray, zeros_like
@@ -26,7 +26,7 @@ from nabla.engine.utils import (
 from nabla.api.utils import ExecutionContext
 
 
-fn set_execution_context_recursively(
+def set_execution_context_recursively(
     mut callable: ArcPointer[Callable],
     execution_context: ExecutionContext,
 ) raises -> None:
@@ -34,5 +34,5 @@ fn set_execution_context_recursively(
         return
 
     callable[].execution_context = execution_context
-    for child in callable[].trafos:
-        set_execution_context_recursively(child[], execution_context)
+    for ref child in callable[].trafos:
+        set_execution_context_recursively(child, execution_context)

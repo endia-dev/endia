@@ -11,12 +11,12 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import math
-from time import perf_counter
+import std.math as math
+from std.time import perf_counter
 import nabla
 
 
-fn test_jvp() raises:
+def test_jvp() raises:
     var a = nabla.ones((400, 400), DType.float32) / 1000
     var b = nabla.ones((400, 400), DType.float32) / 1000
     var c = nabla.ones((400, 400), DType.float32) / 1000
@@ -25,7 +25,7 @@ fn test_jvp() raises:
     var b_tangent = nabla.ones((400, 400), DType.float32) / 1000
     var c_tangent = nabla.ones((400, 400), DType.float32) / 1000
 
-    fn foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
+    def foo(args: List[nabla.Array]) raises -> List[nabla.Array]:
         var a = args[0]
         var b = args[1]
         var c = args[2]
@@ -33,7 +33,7 @@ fn test_jvp() raises:
         for _ in range(20):
             x = nabla.relu(x @ b + c)
         var z = nabla.sum(nabla.sin(x))
-        return List(z, z)
+        return [z, z]
 
     var avg_time = Float64(0.0)
 
@@ -42,9 +42,11 @@ fn test_jvp() raises:
 
     for i in range(1, iterations + 1):
         var start = perf_counter()
-        _, tangents = nabla.jvp(
-            foo, List(a, b, c), List(a_tangent, b_tangent, c_tangent)
+        var _pair = nabla.jvp(
+            foo, [a, b, c], [a_tangent, b_tangent, c_tangent]
         )
+
+        var tangents = _pair[1].copy()
 
         var res0 = tangents[0].item()
         var res1 = tangents[1].item()

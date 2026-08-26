@@ -16,3 +16,8 @@ The MAX API provides a state-of-the-art graph compiler and runtime
 library that executes AI models with incredible speed on a wide range of
 hardware.
 """
+
+from . import driver as driver
+from . import engine as engine
+from . import graph as graph
+from . import tensor as tensor

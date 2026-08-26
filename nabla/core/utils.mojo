@@ -11,9 +11,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from utils import Variant
+from std.utils import Variant
 
-alias ShapeType = Variant[
+comptime ShapeType = Variant[
     List[Int],
     Tuple[Int],
     Tuple[Int, Int],
@@ -26,10 +26,10 @@ alias ShapeType = Variant[
 ]
 
 
-fn getshape(shape: ShapeType) raises -> List[Int]:
+def getshape(shape: ShapeType) raises -> List[Int]:
     var listshape = List[Int]()
     if shape.isa[List[Int]]():
-        listshape = shape[List[Int]]
+        listshape = shape[List[Int]].copy()
     elif shape.isa[Tuple[Int]]():
         var s = shape[Tuple[Int]]
         listshape.append(s[0])
@@ -85,10 +85,10 @@ fn getshape(shape: ShapeType) raises -> List[Int]:
     else:
         raise "Unsupported shape"
 
-    return listshape
+    return listshape.copy()
 
 
-fn compact_dtype_repr(dtype: DType) -> String:
+def compact_dtype_repr(dtype: DType) -> String:
     if dtype == DType.uint8:
         return "u8"
     elif dtype == DType.uint16:

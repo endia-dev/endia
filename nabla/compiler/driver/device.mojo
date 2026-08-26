@@ -24,57 +24,55 @@
 # """
 
 
-from collections import Optional
-from collections.string import StaticString
-from pathlib import Path
+from std.collections import Optional
+from std.collections.string import StaticString
+from std.pathlib import Path
 
-from nabla.compiler._utils import call_dylib_func, get_lib_path_from_cfg
+from nabla.compiler._utils import null_ptr, call_dylib_func, get_lib_path_from_cfg
 from nabla.compiler.tensor import TensorSpec
-from memory import UnsafePointer
+from std.memory import UnsafePointer
 
 from ._driver_library import DriverLibrary
 from ._status import Status, _CStatus
 from .device_memory import DeviceMemory, DeviceTensor
-from runtime.asyncrt import DeviceContextPtr
+from std.runtime.asyncrt import DeviceContextPtr
 
 
 struct _CPUDescriptor:
     var numa_id: Int
 
-    fn __init__(out self, *, numa_id: Optional[Int] = None):
+    def __init__(out self, *, numa_id: Optional[Int] = None):
         self.numa_id = numa_id.value() if numa_id else -1
 
 
-fn _get_driver_path() raises -> String:
+def _get_driver_path() raises -> String:
     return get_lib_path_from_cfg(".driver_lib", "MAX Driver")
 
 
-@value
-@register_passable("trivial")
-struct _CDevice:
-    var _ptr: UnsafePointer[NoneType]
+struct _CDevice(TrivialRegisterPassable, ImplicitlyCopyable):
+    var _ptr: UnsafePointer[NoneType, MutUntrackedOrigin]
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[NoneType]):
+    def __init__(out self, ptr: UnsafePointer[NoneType, MutUntrackedOrigin]):
         self._ptr = ptr
 
-    fn copy(self, lib: Optional[DriverLibrary]) -> Self:
+    def copy(self, lib: Optional[DriverLibrary]) -> Self:
         if not lib:
             return self
         return lib.value().copy_device_fn(self._ptr)
 
-    fn free_data(self, lib: DriverLibrary, data: UnsafePointer[UInt8]) raises:
+    def free_data(self, lib: DriverLibrary, data: UnsafePointer[UInt8]) raises:
         var status = Status(lib)
         lib.free_device_data_fn(self._ptr, data, status.impl)
         if status:
             raise String(status)
 
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         return self._ptr == other._ptr
 
 
 # @deprecated("use gpu.host.DeviceContext() instead")
-struct Device(Stringable, Copyable, Movable, Writable):
+struct Device(Copyable, Movable, Writable):
     """Represents a logical instance of a device, for eg: CPU. This
     can be used to allocate and manage memory in a device's address space,
     and to compile and execute models and graphs on a device.
@@ -83,7 +81,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
     var _lib: Optional[DriverLibrary]
     var _cdev: _CDevice
 
-    fn __init__(out self):
+    def __init__(out self):
         """Constructs a default initialized Device in a state that is only valid
         for deletion. Can be used to represent a 'moved from' state.
 
@@ -92,35 +90,27 @@ struct Device(Stringable, Copyable, Movable, Writable):
         """
 
         self._lib = None
-        self._cdev = _CDevice(UnsafePointer[NoneType]())
+        self._cdev = _CDevice(null_ptr[NoneType]())
 
-    @doc_private
-    fn __init__(
-        out self, lib: DriverLibrary, *, owned owned_ptr: _CDevice
+    def __init__(
+        out self, lib: DriverLibrary, *, var owned_ptr: _CDevice
     ) raises:
-        self._lib = lib
+        self._lib = Optional[DriverLibrary](lib.copy())
         self._cdev = owned_ptr
 
-    fn __copyinit__(out self, existing: Self):
-        """Create a copy of the Device (bumping a refcount on the underlying Device).
-
-        Args:
-            existing: Instance from which to copy.
-        """
-
-        self._lib = existing._lib
-        self._cdev = existing._cdev.copy(existing._lib)
-
-    @always_inline
-    fn copy(self) -> Self:
-        """Explicitly construct a copy of self.
+    def copy(self) -> Self:
+        """Explicitly construct a copy of self (bumping a refcount on the
+        underlying Device).
 
         Returns:
             A copy of this value.
         """
-        return self
+        var res = Self()
+        res._lib = self._lib.copy()
+        res._cdev = self._cdev.copy(self._lib)
+        return res^
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         """Create a new Device and consume `existing`.
 
         Args:
@@ -129,7 +119,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
         self._lib = existing._lib^
         self._cdev = existing._cdev
 
-    fn allocate(
+    def allocate(
         self, spec: TensorSpec, name: Optional[String] = None
     ) raises -> DeviceTensor:
         """Creates tensor allocated in the Device's address space.
@@ -143,7 +133,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
 
         return DeviceTensor(spec, self, name)
 
-    fn allocate(
+    def allocate(
         self, bytecount: Int, name: Optional[String] = None
     ) raises -> DeviceMemory:
         """Allocates a DeviceMemory object in the Device's address space.
@@ -158,7 +148,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
 
         return DeviceMemory(bytecount, self, name)
 
-    fn unsafe_ptr(self) -> UnsafePointer[NoneType]:
+    def unsafe_ptr(self) -> UnsafePointer[NoneType]:
         """Gets the underlying pointer to the Device.
 
         Returns:
@@ -166,18 +156,18 @@ struct Device(Stringable, Copyable, Movable, Writable):
         """
         return self._cdev._ptr
 
-    fn _free(self, data: UnsafePointer[UInt8]) raises:
+    def _free(self, data: UnsafePointer[UInt8]) raises:
         self._cdev.free_data(self._lib.value(), data)
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Returns a descriptor of the device.
 
         Returns:
             String representation of device.
         """
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """
         Formats this Device to the provided Writer.
 
@@ -188,25 +178,25 @@ struct Device(Stringable, Copyable, Movable, Writable):
             writer: The object to write to.
         """
         writer.write(
-            StaticString(
+            String(
                 unsafe_from_utf8_ptr=self._lib.value().get_device_desc_fn(
                     self._cdev._ptr
                 )
             )
         )
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         """Destroys the device.
 
         Note that any DeviceBuffer allocated on the Device will contain a reference
         to the Device, and the Device will only be de-allocated when all of its
         DeviceBuffers have also been destroyed.
         """
-        if not self._cdev._ptr:
+        if Int(self._cdev._ptr) == 0:
             return
         self._lib.value().destroy_device_fn(self._cdev._ptr)
 
-    fn __eq__(self, other: Self) -> Bool:
+    def __eq__(self, other: Self) -> Bool:
         """Check if `self` and `other` point to the same underlying Device.
 
         Args:
@@ -217,7 +207,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
         return self._cdev == other._cdev
 
     @staticmethod
-    fn wait_for(device: Device) raises:
+    def wait_for(device: Device) raises:
         """Blocks until all enqueued, asynchronous calls on the device have completed.
         """
         var device_context = call_dylib_func[DeviceContextPtr](
@@ -228,7 +218,7 @@ struct Device(Stringable, Copyable, Movable, Writable):
 
 
 # @deprecated('use gpu.host.DeviceContext(api="cpu") instead')
-fn cpu() raises -> Device:
+def cpu() raises -> Device:
     """Creates a CPU Device.
 
     Returns:

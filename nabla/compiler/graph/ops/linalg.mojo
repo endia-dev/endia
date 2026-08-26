@@ -12,9 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 """Ops that perform linear algebra."""
 
-from collections import Optional
+from std.collections import Optional
 
-from builtin._location import __call_location, _SourceLocation
+from .._loc import __call_location, _SourceLocation
 from nabla.compiler.graph import Symbol
 from nabla.compiler.tensor import Tensor, TensorShape
 
@@ -47,7 +47,7 @@ def matmul(
     lhs: Symbol,
     rhs: Symbol,
     location: Optional[_SourceLocation] = None,
-) -> Symbol:
+) raises -> Symbol:
     """Computes the matrix multiplication of two symbolic tensors.
 
     Performs general matrix multiplication with broadcasting.
@@ -77,9 +77,9 @@ def matmul(
 
     var g = lhs.graph()
     try:
-        return g.op("rmo.matmul", List(lhs, rhs))
+        return g.op("rmo.matmul", [lhs, rhs])
     except e:
-        raise error(g, e, location=location or __call_location())
+        raise error(g.copy(), e, location=location or __call_location())
 
 
 def band_part(

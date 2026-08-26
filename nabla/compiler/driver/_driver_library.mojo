@@ -11,11 +11,11 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from sys.ffi import DLHandle
+from nabla.compiler._dlhandle import DLHandle
 
 from nabla.compiler._utils import call_dylib_func, get_lib_path_from_cfg
 from nabla.compiler.tensor import TensorSpec
-from memory import ArcPointer, UnsafePointer
+from std.memory import ArcPointer, UnsafePointer
 
 from ._status import _CStatus
 
@@ -24,69 +24,69 @@ struct ManagedDLHandle(Movable):
     var lib: DLHandle
 
     @implicit
-    fn __init__(out self, lib: DLHandle):
+    def __init__(out self, lib: DLHandle):
         self.lib = lib
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.lib = existing.lib
 
-    fn get_handle(self) -> DLHandle:
+    def get_handle(self) -> DLHandle:
         return self.lib
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         if self.lib:
             self.lib.close()
 
 
-@value
-struct DriverLibrary:
+@fieldwise_init
+struct DriverLibrary(Copyable, Movable):
     var lib: ArcPointer[ManagedDLHandle]
 
-    alias device_type = UnsafePointer[NoneType]
-    alias device_memory_type = UnsafePointer[NoneType]
+    comptime device_type = UnsafePointer[NoneType, MutUntrackedOrigin]
+    comptime device_memory_type = UnsafePointer[NoneType, MutUntrackedOrigin]
 
-    alias destroy_device_fn_sig = fn (Self.device_type) -> None
+    comptime destroy_device_fn_sig = def (Self.device_type) thin abi("C") -> None
     var destroy_device_fn: Self.destroy_device_fn_sig
 
-    alias create_cpu_device_fn_sig = fn (Int, _CStatus) -> Self.device_type
+    comptime create_cpu_device_fn_sig = def (Int, _CStatus) thin abi("C") -> Self.device_type
     var create_cpu_device_fn: Self.create_cpu_device_fn_sig
 
-    alias create_accelerator_device_fn_sig = fn (
+    comptime create_accelerator_device_fn_sig = def (
         Int, _CStatus
-    ) -> Self.device_type
+    ) thin abi("C") -> Self.device_type
     var create_accelerator_device_fn: Self.create_accelerator_device_fn_sig
 
-    alias copy_device_fn_sig = fn (Self.device_type) -> Self.device_type
+    comptime copy_device_fn_sig = def (Self.device_type) thin abi("C") -> Self.device_type
     var copy_device_fn: Self.copy_device_fn_sig
 
-    alias free_device_data_fn_sig = fn (
-        Self.device_type, UnsafePointer[UInt8], _CStatus
-    ) -> None
+    comptime free_device_data_fn_sig = def (
+        Self.device_type, UnsafePointer[UInt8, MutUntrackedOrigin], _CStatus
+    ) thin abi("C") -> None
     var free_device_data_fn: Self.free_device_data_fn_sig
 
-    alias get_device_desc_fn_sig = fn (Self.device_type) -> UnsafePointer[UInt8]
+    comptime get_device_desc_fn_sig = def (Self.device_type) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
     var get_device_desc_fn: Self.get_device_desc_fn_sig
 
-    alias create_device_memory_fn_sig = fn (
-        UnsafePointer[TensorSpec], Self.device_type, _CStatus
-    ) -> Self.device_memory_type
+    comptime create_device_memory_fn_sig = def (
+        UnsafePointer[TensorSpec, MutUntrackedOrigin], Self.device_type, _CStatus
+    ) thin abi("C") -> Self.device_memory_type
     var create_device_memory_fn: Self.create_device_memory_fn_sig
 
-    alias destroy_device_memory_fn_sig = fn (Self.device_memory_type) -> None
+    comptime destroy_device_memory_fn_sig = def (Self.device_memory_type) thin abi("C") -> None
     var destroy_device_memory_fn: Self.destroy_device_memory_fn_sig
 
-    alias copy_device_memory_fn_sig = fn (
+    comptime copy_device_memory_fn_sig = def (
         Self.device_memory_type, Self.device_memory_type, _CStatus
-    ) -> None
+    ) thin abi("C") -> None
     var copy_device_memory_fn: Self.copy_device_memory_fn_sig
 
-    alias get_data_fn_sig = fn (Self.device_memory_type) -> UnsafePointer[UInt8]
+    comptime get_data_fn_sig = def (Self.device_memory_type) thin abi("C") -> UnsafePointer[UInt8, MutUntrackedOrigin]
     var get_data_fn: Self.get_data_fn_sig
 
-    alias accelerator_count_fn_sig = fn () -> Int
+    comptime accelerator_count_fn_sig = def () thin abi("C") -> Int
     var accelerator_count_fn: Self.accelerator_count_fn_sig
 
-    fn __init__(out self) raises:
+    def __init__(out self) raises:
         var lib = DLHandle(_get_driver_path())
         self.destroy_device_fn = lib.get_function[Self.destroy_device_fn_sig](
             "M_destroyDevice"
@@ -121,9 +121,9 @@ struct DriverLibrary:
         ]("M_getAcceleratorCount")
         self.lib = ArcPointer[ManagedDLHandle](lib)
 
-    fn get_handle(self) -> DLHandle:
+    def get_handle(self) -> DLHandle:
         return self.lib[].get_handle()
 
 
-fn _get_driver_path() raises -> String:
+def _get_driver_path() raises -> String:
     return get_lib_path_from_cfg(".driver_lib", "MAX Driver")

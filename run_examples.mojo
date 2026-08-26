@@ -14,7 +14,7 @@
 from examples import *
 
 
-def main():
+def main() raises:
     # print("\033[1;94m\nEAGER MODE\033[0m")
     # test_eager_mode()
 

@@ -12,16 +12,18 @@
 # ===----------------------------------------------------------------------=== #
 """Ops that slice, index, stack, concat etc."""
 
-from collections.optional import Optional
+from std.collections.optional import Optional
 
 from _mlir.ir import Attribute, Identifier, NamedAttribute
-from builtin._location import __call_location, _SourceLocation
+from .._loc import __call_location, _SourceLocation
 
-from utils import IndexList
-from utils.numerics import max_finite
+from std.utils import IndexList
+from std.utils.numerics import max_finite
 
 from ..error import error
-from ..symbol import SymbolicSlice
+from ..symbol import Symbol, SymbolicSlice
+from .elementwise import equal
+from ..type import Dim, TensorType
 
 # TODO: Add checks or extend to unranked support, where static shapes assumed.
 
@@ -31,7 +33,7 @@ from ..symbol import SymbolicSlice
 # ===----------------------------------------------------------------------=== #
 
 
-def gather(input: Symbol, indices: Symbol, axis: Int = 0) -> Symbol:
+def gather(input: Symbol, indices: Symbol, var axis: Int = 0) -> Symbol:
     """Selects elements out of an input tensor by index.
 
     Args:
@@ -81,7 +83,7 @@ def slice(
     slices: List[SymbolicSlice],
     out_dims: List[Dim],
     location: Optional[_SourceLocation] = None,
-) -> Symbol:
+) raises -> Symbol:
     """Slices a symbolic tensor along each dimension.
 
     Args:
@@ -107,10 +109,10 @@ def slice(
     if len(slices) > input_type.rank():
         message = String("got {} slices, tensor only has rank {}")
         raise error(
-            g, message.format(len(slices), input_type.rank()), location=loc
+            g.copy(), message.format(len(slices), input_type.rank()), location=loc
         )
 
-    var out_shape = out_dims
+    var out_shape = out_dims.copy()
     if len(out_shape) != len(slices):
         raise error(
             input.graph(),
@@ -120,7 +122,7 @@ def slice(
 
     # Append inner unsliced dims to the output shape.
     for i in range(len(out_shape), len(input_type.dims)):
-        out_shape.append(input_type.dims[i])
+        out_shape.append(input_type.dims[i].copy())
 
     var starts = List[Symbol]()
     var stops = List[Symbol]()
@@ -157,7 +159,7 @@ def slice(
 
     return g.op(
         "rmo.mo.slice",
-        List[Symbol](input, start, stop, step),
+        [input, start, stop, step],
         TensorType(input_type.dtype, out_shape),
     )
 
@@ -168,7 +170,7 @@ def select(
     x: Symbol,
     y: Symbol,
     location: Optional[_SourceLocation] = None,
-) -> Symbol:
+) raises -> Symbol:
     """Returns `condition ? x : y` (element-wise), where `cond`, `x` and `y`
     are input tensors.
 
@@ -189,10 +191,10 @@ def select(
     try:
         return g.op(
             "rmo.select",
-            List(condition, x, y),
+            [condition, x, y],
         )
     except e:
-        raise error(g, e, location=location or __call_location())
+        raise error(g.copy(), e, location=location or __call_location())
 
 
 def _slice_size(s: Slice, length: Optional[Int64]) -> Optional[Int]:
@@ -206,7 +208,7 @@ def _slice_size(s: Slice, length: Optional[Int64]) -> Optional[Int]:
         return len(range(start, stop, step))
     else:
         startval = (s.start or 0).value()
-        if s.end and sign(startval) == sign(s.end.value()):
+        if s.end and sign(Int64(startval)) == sign(Int64(s.end.value())):
             return len(range(startval, s.end.value(), s.step.or_else(1)))
     return None
 
@@ -217,7 +219,7 @@ def slice(
     *slices: Slice,
     out_dims: List[Dim] = List[Dim](),
     location: Optional[_SourceLocation] = None,
-) -> Symbol:
+) raises -> Symbol:
     """Slices a symbolic tensor with `Int` ranges.
 
     Args:
@@ -238,16 +240,19 @@ def slice(
     Raises:
         An exception if out_dims is empty and can't be calculated at graph build time.
     """
-    return slice(input, slices, out_dims, location)
+    var slice_list = List[Slice]()
+    for s in slices:
+        slice_list.append(s)
+    return slice(input, slice_list, out_dims, location)
 
 
 @always_inline
 def slice(
     input: Symbol,
-    slices: VariadicListMem[Slice, _],
+    slices: List[Slice],
     out_dims: List[Dim] = List[Dim](),
     location: Optional[_SourceLocation] = None,
-) -> Symbol:
+) raises -> Symbol:
     """Slices a symbolic tensor with `Int` ranges.
 
     Will raise an exception if out_dim is not set and can't be calculated at graph build time.
@@ -275,7 +280,7 @@ def slice(
     loc = location or __call_location()
     if len(slices) > t.rank():
         message = String("got {} slices, tensor only has rank {}")
-        raise error(g, message.format(len(slices), t.rank()), location=loc)
+        raise error(g.copy(), message.format(len(slices), t.rank()), location=loc)
 
     slice_max = Int(Int64.MAX)
     empty_slice = Slice(start=None, end=None, step=1)
@@ -286,7 +291,7 @@ def slice(
     steps = List[Int64]()
 
     if out_dims:
-        dims = out_dims
+        dims = out_dims.copy()
         if len(dims) != len(slices):
             raise error(
                 input.graph(),
@@ -296,23 +301,26 @@ def slice(
 
     for i in range(t.rank()):
         slice = slices[i] if i < len(slices) else empty_slice
-        dim = t.dims[i]
+        dim = t.dims[i].copy()
 
-        start, stop, step = slice.indices(
-            Int(dim.num_elements() if dim.is_static() else slice_max)
+        var _idx = slice.indices(
+            Int(dim.num_elements()) if dim.is_static() else slice_max
         )
+        var start = _idx[0]
+        var stop = _idx[1]
+        var step = _idx[2]
         if step < 1:
-            raise error(g, "negative slices unsupported")
+            raise error(g.copy(), "negative slices unsupported")
 
-        starts.append(start)
-        stops.append(stop)
-        steps.append(step)
+        starts.append(Int64(start))
+        stops.append(Int64(stop))
+        steps.append(Int64(step))
 
         if i < len(dims):
             continue
 
         if slice == empty_slice:
-            dims.append(dim)
+            dims.append(dim.copy())
             continue
 
         length = dim.maybe_num_elements()
@@ -345,14 +353,14 @@ def slice(
 
     return g.op(
         "rmo.mo.slice",
-        List(input, g.vector(starts), g.vector(stops), g.vector(steps)),
+        [input, g.vector(starts), g.vector(stops), g.vector(steps)],
         TensorType(t.dtype, dims),
     )
 
 
 def slice(
-    input: Symbol, idx: Symbol, axis: Int = 0, keep_dims: Bool = False
-) -> Symbol:
+    input: Symbol, idx: Symbol, var axis: Int = 0, keep_dims: Bool = False
+) raises -> Symbol:
     """Slices out a `n-1`-d plane from the input symbolic tensor.
 
     Args:
@@ -372,7 +380,7 @@ def slice(
     var rank = input_type.rank()
 
     if axis < 0:
-        axis = rank + axis
+        axis += rank
 
     var slices = List[SymbolicSlice]()
     var dims = List[Dim]()
@@ -381,13 +389,13 @@ def slice(
             # Handle edge case where the index is `-1`.
             # Slicing from `-1` to `0` returns no inputs.
             # Instead slice from `-1` to `Int64.MAX`.
-            is_neg_one = ops.equal(idx, g.scalar(Int64(-1)))
+            is_neg_one = equal(idx, g.scalar(Int64(-1)))
             end = select(is_neg_one, g.scalar(Int64.MAX), idx + 1)
             slices.append(SymbolicSlice(idx, end, None))
             dims.append(1)
         else:
             slices.append(SymbolicSlice(None, None, None))
-            dims.append(input_type.dims[i])
+            dims.append(input_type.dims[i].copy())
 
     var out_sliced = slice(input, slices, dims)
 
@@ -451,7 +459,7 @@ def split[
 @always_inline
 def concat(
     values: List[Symbol], axis: Int = 0, out_dim: Optional[Dim] = None
-) -> Symbol:
+) raises -> Symbol:
     """Concatenates a list of symbolic tensors along an axis.
 
     Args:
@@ -472,12 +480,12 @@ def concat(
     """
     var g = values[0].graph()
     if not len(values):
-        raise error(g, "must concat at least 1 value")
+        raise error(g.copy(), "must concat at least 1 value")
 
     var ctx = g._context()
     var axisAttr = Attribute.parse(ctx, String(axis))
     var namedAxisAttr = NamedAttribute(Identifier(ctx, "axis"), axisAttr)
-    var attrs = List[NamedAttribute](namedAxisAttr)
+    var attrs: List[NamedAttribute] = [namedAxisAttr]
     if out_dim:
         attrs.append(
             NamedAttribute(
@@ -499,19 +507,19 @@ def concat(
         # We explicitly match that error and rewrite it with something with more context.
         if "Unsupported dim type" in String(e):
             raise error(
-                g,
+                g.copy(),
                 "Concat does not support outputting algebraic expressions,",
                 " but the axis dimension could not be simplified.",
                 " Please set out_dim.",
                 location=__call_location(),
             )
 
-        raise error(g, e, location=__call_location())
+        raise error(g.copy(), e, location=__call_location())
 
     return out
 
 
-def stack(values: List[Symbol], axis: Int = 0) -> Symbol:
+def stack(values: List[Symbol], var axis: Int = 0) raises -> Symbol:
     """Stacks a list of tensors along a new axis.
 
     Args:

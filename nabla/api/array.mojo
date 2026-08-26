@@ -11,95 +11,94 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import nabla.compiler
-from memory import ArcPointer
-from collections import Optional
+import nabla.compiler as compiler
+from std.memory import ArcPointer
+from std.collections import Optional
 from nabla.core.device_array import DeviceArray
 from nabla.api.utils import ExecutionContext
 from nabla.core.utils import ShapeType
-import ..core.device_array as devar
+from ..core import device_array as devar
 
 
-@value
-struct Array(Copyable, Movable, Writable, Stringable):
+struct Array(Copyable, ImplicitlyCopyable, Movable, Writable):
     var device_array: ArcPointer[DeviceArray]
 
-    fn __init__(out self, device_array: ArcPointer[DeviceArray]) raises:
+    def __init__(out self, device_array: ArcPointer[DeviceArray]) raises:
         self.device_array = device_array
         self.device_array[].not_to_be_materialized_(False)
 
-    fn __init__(out self, read device_array: DeviceArray) raises:
+    def __init__(out self, read device_array: DeviceArray) raises:
         self.device_array = ArcPointer(device_array)
         self.device_array[].not_to_be_materialized_(False)
 
-    fn __del__(owned self) -> None:
+    def __deinit__(deinit self):
         if self.device_array.count() == 1:
             self.device_array[].not_to_be_materialized_(True)
 
-    fn to_max[dtype: DType](self) raises -> compiler.tensor.Tensor[dtype]:
+    def to_max[dtype: DType](self) raises -> compiler.tensor.Tensor[dtype]:
         return self.device_array[].to_max[dtype]()
 
-    fn tangent(self) raises -> Array:
+    def tangent(self) raises -> Array:
         return Array(self.device_array[].tangent())
 
-    fn cotangent(self) raises -> Array:
+    def cotangent(self) raises -> Array:
         return Array(self.device_array[].cotangent())
 
-    fn grad(self) raises -> Array:
+    def grad(self) raises -> Array:
         return Array(self.device_array[].grad())
 
-    fn zero_tangent(mut self) raises -> None:
+    def zero_tangent(mut self) raises -> None:
         self.device_array[].zero_tangent()
 
-    fn zero_cotangent(mut self) raises -> None:
+    def zero_cotangent(mut self) raises -> None:
         self.device_array[].zero_cotangent()
 
-    fn zero_grad(mut self) raises -> None:
+    def zero_grad(mut self) raises -> None:
         self.device_array[].zero_grad()
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         return String(self.device_array[])
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         writer.write(String(self))
 
-    fn no_tangent(mut self) raises -> None:
+    def no_tangent(mut self) raises -> None:
         self.device_array[].no_tangent()
 
-    fn checkpoint(mut self, value: Bool = True) raises -> None:
+    def checkpoint(mut self, value: Bool = True) raises -> None:
         self.device_array[].checkpoint(value)
 
-    fn requires_pullback(self) raises -> Bool:
+    def requires_pullback(self) raises -> Bool:
         return self.device_array[].requires_pullback()
 
-    fn requires_pullback_(mut self, value: Bool = True) raises -> None:
+    def requires_pullback_(mut self, value: Bool = True) raises -> None:
         self.device_array[].requires_pullback_(value)
 
-    fn requires_grad(self) raises -> Bool:
+    def requires_grad(self) raises -> Bool:
         return self.device_array[].requires_grad()
 
-    fn requires_grad_(mut self, value: Bool = True) raises -> None:
+    def requires_grad_(mut self, value: Bool = True) raises -> None:
         self.device_array[].requires_grad_(value)
 
-    fn shape(self) raises -> List[Int]:
+    def shape(self) raises -> List[Int]:
         return self.device_array[].shape()
 
-    fn shape_(mut self, shape: List[Int]) raises -> None:
+    def shape_(mut self, shape: List[Int]) raises -> None:
         self.device_array[].shape_(shape)
 
-    fn dtype(self) raises -> DType:
+    def dtype(self) raises -> DType:
         return self.device_array[].dtype()
 
-    fn batch_dim_ctr(self) raises -> Int:
+    def batch_dim_ctr(self) raises -> Int:
         return self.device_array[].batch_dim_ctr()
 
-    fn batch_dim_ctr_(mut self, value: Int) raises -> None:
+    def batch_dim_ctr_(mut self, value: Int) raises -> None:
         self.device_array[].batch_dim_ctr_(value)
 
-    fn backward(mut self, remat: Bool = False) raises -> None:
+    def backward(mut self, remat: Bool = False) raises -> None:
         self.device_array[].backward(remat)
 
-    fn item[
+    def item[
         type: DType = DType.float32
     ](
         self, execution_context: Optional[ExecutionContext] = None
@@ -111,7 +110,7 @@ struct Array(Copyable, Movable, Writable, Stringable):
         )
         return self.device_array[].item[type](_execution_context)
 
-    fn load[
+    def load[
         type: DType = DType.float32, width: Int = 1
     ](
         self, idx: Int, execution_context: Optional[ExecutionContext] = None
@@ -123,7 +122,7 @@ struct Array(Copyable, Movable, Writable, Stringable):
         )
         return self.device_array[].load[type, width](idx, _execution_context)
 
-    fn store[
+    def store[
         type: DType, width: Int
     ](
         mut self,
@@ -138,140 +137,140 @@ struct Array(Copyable, Movable, Writable, Stringable):
         )
         self.device_array[].store[type, width](idx, value, _execution_context)
 
-    fn __getitem__(self, *slices: Slice) raises -> Array:
+    def __getitem__(self, *slices: Slice) raises -> Array:
         var slice_list = List[Slice]()
         for slice in slices:
-            slice_list.append(slice[])
+            slice_list.append(slice)
         return Array(self.device_array[].__getitem__(slice_list))
 
-    fn __add__(self, other: Array) raises -> Array:
+    def __add__(self, other: Array) raises -> Array:
         return Array(self.device_array[] + other.device_array[])
 
-    fn __add__(self, other: SIMD[_, 1]) raises -> Array:
+    def __add__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(self.device_array[] + other)
 
-    fn __add__(self, other: Int) raises -> Array:
+    def __add__(self, other: Int) raises -> Array:
         return Array(self.device_array[] + other)
 
-    fn __radd__(self, other: SIMD[_, 1]) raises -> Array:
+    def __radd__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(other + self.device_array[])
 
-    fn __radd__(self, other: Int) raises -> Array:
+    def __radd__(self, other: Int) raises -> Array:
         return Array(other + self.device_array[])
 
-    fn __iadd__(mut self, other: Array) raises -> None:
+    def __iadd__(mut self, other: Array) raises -> None:
         self = Array(self.device_array[] + other.device_array[])
 
-    fn __iadd__(mut self, other: SIMD[_, 1]) raises -> None:
+    def __iadd__(mut self, other: SIMD[_, 1]) raises -> None:
         self = Array(self.device_array[] + other)
 
-    fn __iadd__(mut self, other: Int) raises -> None:
+    def __iadd__(mut self, other: Int) raises -> None:
         self = Array(self.device_array[] + other)
 
-    fn __mul__(self, other: Array) raises -> Array:
+    def __mul__(self, other: Array) raises -> Array:
         return Array(self.device_array[] * other.device_array[])
 
-    fn __mul__(self, other: SIMD[_, 1]) raises -> Array:
+    def __mul__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(self.device_array[] * other)
 
-    fn __mul__(self, other: Int) raises -> Array:
+    def __mul__(self, other: Int) raises -> Array:
         return Array(self.device_array[] * other)
 
-    fn __rmul__(self, other: SIMD[_, 1]) raises -> Array:
+    def __rmul__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(other * self.device_array[])
 
-    fn __rmul__(self, other: Int) raises -> Array:
+    def __rmul__(self, other: Int) raises -> Array:
         return Array(other * self.device_array[])
 
-    fn __imul__(mut self, other: Array) raises -> None:
+    def __imul__(mut self, other: Array) raises -> None:
         self = Array(self.device_array[] * other.device_array[])
 
-    fn __imul__(mut self, other: SIMD[_, 1]) raises -> None:
+    def __imul__(mut self, other: SIMD[_, 1]) raises -> None:
         self = Array(self.device_array[] * other)
 
-    fn __imul__(mut self, other: Int) raises -> None:
+    def __imul__(mut self, other: Int) raises -> None:
         self = Array(self.device_array[] * other)
 
-    fn __sub__(self, other: Array) raises -> Array:
+    def __sub__(self, other: Array) raises -> Array:
         return Array(self.device_array[] - other.device_array[])
 
-    fn __sub__(self, other: SIMD[_, 1]) raises -> Array:
+    def __sub__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(self.device_array[] - other)
 
-    fn __sub__(self, other: Int) raises -> Array:
+    def __sub__(self, other: Int) raises -> Array:
         return Array(self.device_array[] - other)
 
-    fn __rsub__(self, other: SIMD[_, 1]) raises -> Array:
+    def __rsub__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(other - self.device_array[])
 
-    fn __rsub__(self, other: Int) raises -> Array:
+    def __rsub__(self, other: Int) raises -> Array:
         return Array(other - self.device_array[])
 
-    fn __isub__(mut self, other: Array) raises -> None:
+    def __isub__(mut self, other: Array) raises -> None:
         self = Array(self.device_array[] - other.device_array[])
 
-    fn __isub__(mut self, other: SIMD[_, 1]) raises -> None:
+    def __isub__(mut self, other: SIMD[_, 1]) raises -> None:
         self = Array(self.device_array[] - other)
 
-    fn __isub__(mut self, other: Int) raises -> None:
+    def __isub__(mut self, other: Int) raises -> None:
         self = Array(self.device_array[] - other)
 
-    fn __truediv__(self, other: Array) raises -> Array:
+    def __truediv__(self, other: Array) raises -> Array:
         return Array(self.device_array[] / other.device_array[])
 
-    fn __truediv__(self, other: SIMD[_, 1]) raises -> Array:
+    def __truediv__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(self.device_array[] / other)
 
-    fn __truediv__(self, other: Int) raises -> Array:
+    def __truediv__(self, other: Int) raises -> Array:
         return Array(self.device_array[] / other)
 
-    fn __rtruediv__(self, other: SIMD[_, 1]) raises -> Array:
+    def __rtruediv__(self, other: SIMD[_, 1]) raises -> Array:
         return Array(other / self.device_array[])
 
-    fn __rtruediv__(self, other: Int) raises -> Array:
+    def __rtruediv__(self, other: Int) raises -> Array:
         return Array(other / self.device_array[])
 
-    fn __itruediv__(mut self, other: Array) raises -> None:
+    def __itruediv__(mut self, other: Array) raises -> None:
         self = Array(self.device_array[] / other.device_array[])
 
-    fn __itruediv__(mut self, other: SIMD[_, 1]) raises -> None:
+    def __itruediv__(mut self, other: SIMD[_, 1]) raises -> None:
         self = Array(self.device_array[] / other)
 
-    fn __itruediv__(mut self, other: Int) raises -> None:
+    def __itruediv__(mut self, other: Int) raises -> None:
         self = Array(self.device_array[] / other)
 
-    fn __neg__(self) raises -> Array:
+    def __neg__(self) raises -> Array:
         return Array(-self.device_array[])
 
-    fn __matmul__(self, other: Array) raises -> Array:
+    def __matmul__(self, other: Array) raises -> Array:
         return Array(self.device_array[] @ other.device_array[])
 
-    fn T(self, x: Int = -2, y: Int = -1) raises -> Array:
+    def T(self, x: Int = -2, y: Int = -1) raises -> Array:
         return Array(self.device_array[].T(x, y))
 
-    fn reshape(self, shape: List[Int]) raises -> Array:
+    def reshape(self, shape: List[Int]) raises -> Array:
         return Array(self.device_array[].reshape(shape))
 
-    fn __pow__(self, exp: DeviceArray) raises -> Array:
+    def __pow__(self, exp: DeviceArray) raises -> Array:
         return Array(self.device_array[] ** exp)
 
-    fn __pow__(self, exp: SIMD[_, 1]) raises -> Array:
+    def __pow__(self, exp: SIMD[_, 1]) raises -> Array:
         return Array(self.device_array[] ** exp)
 
-    fn __pow__(self, exp: Int) raises -> Array:
+    def __pow__(self, exp: Int) raises -> Array:
         return Array(self.device_array[] ** exp)
 
-    fn __rpow__(self, exp: SIMD[_, 1]) raises -> Array:
+    def __rpow__(self, exp: SIMD[_, 1]) raises -> Array:
         return Array(exp ** self.device_array[])
 
-    fn __rpow__(self, exp: Int) raises -> Array:
+    def __rpow__(self, exp: Int) raises -> Array:
         return Array(exp ** self.device_array[])
 
 
-alias Tensor = Array
+comptime Tensor = Array
 
 
-fn ones(
+def ones(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,
@@ -280,7 +279,7 @@ fn ones(
     return Array(devar.ones(shape, dtype, requires_grad, execution_context))
 
 
-fn ones_like(
+def ones_like(
     array: Array,
     dtype: DType = DType.float32,
     requires_pullback: Bool = False,
@@ -293,7 +292,7 @@ fn ones_like(
     )
 
 
-fn full(
+def full(
     shape: ShapeType,
     fill_value: SIMD[_, 1],
     dtype: DType = fill_value.dtype,
@@ -307,7 +306,7 @@ fn full(
     )
 
 
-fn arange(
+def arange(
     start: Float32,
     end: Float32,
     step: Float32,
@@ -322,7 +321,7 @@ fn arange(
     )
 
 
-fn arange(
+def arange(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,
@@ -331,7 +330,7 @@ fn arange(
     return Array(devar.arange(shape, dtype, requires_grad, execution_context))
 
 
-fn zeros(
+def zeros(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,
@@ -340,7 +339,7 @@ fn zeros(
     return Array(devar.zeros(shape, dtype, requires_grad, execution_context))
 
 
-fn zeros_like(
+def zeros_like(
     array: Array,
     dtype: DType = DType.float32,
     requires_pullback: Bool = False,
@@ -353,7 +352,7 @@ fn zeros_like(
     )
 
 
-fn randn(
+def randn(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,
@@ -375,7 +374,7 @@ fn randn(
     )
 
 
-fn rand(
+def rand(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,
@@ -391,7 +390,7 @@ fn rand(
     )
 
 
-fn he_normal(
+def he_normal(
     shape: ShapeType,
     dtype: DType = DType.float32,
     requires_grad: Bool = False,

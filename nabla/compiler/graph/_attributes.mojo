@@ -26,7 +26,7 @@ lists, tensors, etc.
 import _mlir
 from nabla.compiler.tensor import Tensor
 
-import ._c
+from . import _c
 from .type import TensorType
 
 # ===------------------------------------------------------------------=== #
@@ -34,10 +34,10 @@ from .type import TensorType
 # ===------------------------------------------------------------------=== #
 
 
-fn _tensor_attr[
+def _tensor_attr[
     dtype: DType
 ](
-    ctx: _mlir.Context, name: String, owned value: Tensor[dtype]
+    ctx: _mlir.Context, name: String, var value: Tensor[dtype]
 ) -> _mlir.NamedAttribute:
     """Creates a new `Tensor`-valued `Attribute`.
 
@@ -60,13 +60,13 @@ fn _tensor_attr[
     var t = TensorType(value.spec()).to_mlir(ctx)
     return _c.attr_new_tensor(
         name,
-        value._steal_ptr().bitcast[NoneType](),
+        value.copy()._steal_ptr().bitcast[NoneType](),
         t,
         is_owned=True,
     )
 
 
-fn _tensor_resource_attr(
+def _tensor_resource_attr(
     ctx: _mlir.Context, name: String, file_name: String, type: TensorType
 ) -> _mlir.NamedAttribute:
     """Creates a new `Tensor` `Attribute` from an external file.
@@ -87,7 +87,7 @@ fn _tensor_resource_attr(
     return _c.attr_new_tensor_from_file(name, file_name, type.to_mlir(ctx))
 
 
-fn _vector_attr[
+def _vector_attr[
     dtype: DType
 ](
     ctx: _mlir.Context, name: String, values: List[Scalar[dtype]]
@@ -116,7 +116,7 @@ fn _vector_attr[
     )
 
 
-fn _scalar_attr[
+def _scalar_attr[
     dtype: DType
 ](
     ctx: _mlir.Context, name: String, value: Scalar[dtype], rank: Int = 0
@@ -140,13 +140,13 @@ fn _scalar_attr[
     """
     # Note: while this could generalize to something like splat, MO doesn't
     # really make use of those.
-    var shape = List[Int, hint_trivial_type=True](capacity=rank)
+    var shape = List[Int](capacity=rank)
     for _ in range(rank):
         shape.append(1)
     return _tensor_attr[dtype](ctx, name, Tensor(shape, value))
 
 
-fn _string_attr(
+def _string_attr(
     ctx: _mlir.Context, name: String, value: String
 ) -> _mlir.NamedAttribute:
     """Creates a new `String`-valued `Attribute`.
@@ -165,7 +165,7 @@ fn _string_attr(
     )
 
 
-fn _shape_attr(
+def _shape_attr(
     ctx: _mlir.Context, name: String, shape: List[Dim]
 ) -> _mlir.NamedAttribute:
     """Creates a new `Shape`-valued `Attribute`.

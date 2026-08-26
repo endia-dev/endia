@@ -12,21 +12,20 @@
 # ===----------------------------------------------------------------------=== #
 """Core graph primitives."""
 
-from collections import Optional, Set
-from os import abort
-from pathlib import Path
-from sys.info import has_neon
+from std.collections import Optional, Set
+from std.os import abort
+from std.pathlib import Path
+from std.sys.info import CompilationTarget
 
 import _mlir
 from _mlir.builtin_attributes import StringAttr, TypeAttr
 from _mlir.builtin_types import FunctionType
 from _mlir.ir import Module, Operation
-from builtin._location import __call_location, _SourceLocation
+from ._loc import __call_location, _SourceLocation
 from nabla.compiler.graph.quantization import QuantizationEncoding
 from nabla.compiler.tensor import Tensor, TensorShape
-from memory import ArcPointer
+from std.memory import ArcPointer
 
-from utils.write import _WriteBufferStack
 
 from ._attributes import _tensor_attr, _vector_attr
 from .error import error
@@ -36,8 +35,8 @@ from .type import Dim, ListType, TensorType, Type
 # TODO: Add examples throughout.
 
 
-@value
-struct LayerInfo:
+@fieldwise_init
+struct LayerInfo(Copyable, Movable):
     """Name and Location information for a layer."""
 
     var name: String
@@ -56,38 +55,38 @@ struct _OwnedGraph(Movable):
     var layers: List[LayerInfo]
     var parameters: Set[String]
 
-    fn __init__(
+    def __init__(
         out self,
-        owned ctx: _mlir.Context,
-        owned op: _mlir.Operation,
+        var ctx: _mlir.Context,
+        var op: _mlir.Operation,
         in_types: List[Type],
     ):
         self.ctx = ctx
         self.op = op
-        self.layers = List[LayerInfo](LayerInfo("", 0))
+        self.layers = [LayerInfo("", 0)]
         self.parameters = Set[String]()
         for type in in_types:
-            for dim in type[].dims():
-                if not dim[].is_symbolic():
+            for dim in type.dims():
+                if not dim.is_symbolic():
                     continue
-                var name = String(dim[])
+                var name = String(dim)
                 self.parameters.add(name)
 
-    fn current_layer(self) -> String:
+    def current_layer(self) -> String:
         var layer: String = ""
         for layer_info in self.layers:
             if layer:
                 layer += "."
-            layer += layer_info[].name
+            layer += layer_info.name
         return layer^
 
-    fn current_location(self) -> _mlir.Location:
+    def current_location(self) -> _mlir.Location:
         var full_name = self.current_layer()
-        var current_layer = self.layers[-1]
+        var current_layer = self.layers[len(self.layers) - 1].copy()
 
         var layer_op_num = 0
         if len(self.layers) >= 2:
-            layer_op_num = self.layers[-2].op_count
+            layer_op_num = self.layers[len(self.layers) - 2].op_count
 
         return _mlir.Location(
             self.ctx,
@@ -96,51 +95,50 @@ struct _OwnedGraph(Movable):
             current_layer.op_count,
         )
 
-    fn inc_op_count(mut self):
-        self.layers[-1].op_count += 1
+    def inc_op_count(mut self):
+        self.layers[len(self.layers) - 1].op_count += 1
 
     @no_inline
-    fn module(self) -> _mlir.Module:
+    def module(self) -> _mlir.Module:
         try:
             return _mlir.Module.from_op(self.op.parent())
         except:
-            return abort[_mlir.Module]("invalid MLIR state for graph")
+            abort("invalid MLIR state for graph")
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ctx = existing.ctx
         self.op = existing.op
         self.layers = existing.layers^
         self.parameters = existing.parameters^
 
     @no_inline
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         self.module().as_op().destroy()
         self.ctx.__exit__()
 
 
-alias _GraphRef = ArcPointer[_OwnedGraph]
+comptime _GraphRef = ArcPointer[_OwnedGraph]
 
 
-@value
-struct _GraphLayerContext:
+@fieldwise_init
+struct _GraphLayerContext(Copyable, Movable):
     var graph: _GraphRef
     var name: String
 
-    fn __enter__(mut self):
+    def __enter__(mut self):
         self.graph[].layers.append(LayerInfo(self.name, 0))
 
-    fn __exit__(mut self):
+    def __exit__(mut self):
         var name = self.graph[].layers.pop().name
         self.graph[].inc_op_count()
         debug_assert(name == self.name, "non-hiercharchical graph layers")
 
 
-@value
 # @deprecated(
 #     "the Mojo max.engine API has been deprecated in favor of the Python API. It"
 #     " will be open sourced in a future patch prior to being removed."
 # )
-struct Graph(Copyable, Movable, Stringable, Writable):
+struct Graph(Copyable, Movable, Writable):
     """Represents a single MAX graph.
 
     A `Graph` is a callable routine in MAX Engine, similar to a
@@ -182,7 +180,11 @@ struct Graph(Copyable, Movable, Stringable, Writable):
     var _graph: _GraphRef
 
     @implicit
-    fn __init__(out self, in_type: Type):
+    def __init__(out self, graph: _GraphRef):
+        self._graph = graph
+
+    @implicit
+    def __init__(out self, in_type: Type):
         """Constructs a new `Graph` with a single input type.
 
         Although a `Graph` is technically valid once constructed, it is not
@@ -194,9 +196,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
                 [`TensorType`](/max/api/mojo/graph/type/TensorType) or
                 [`ListType`](/max/api/mojo/graph/type/ListType) value.
         """
-        self = Self("graph", List[Type](in_type))
+        self = Self("graph", [in_type.copy()])
 
-    fn __init__(
+    def __init__(
         out self,
         in_types: List[Type],
         out_types: List[Type] = List[Type](),
@@ -218,7 +220,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         self = Self("graph", in_types, out_types)
 
-    fn __init__(
+    def __init__(
         out self,
         name: String,
         in_types: List[Type],
@@ -248,10 +250,10 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         var in_types_mlir = List[_mlir.Type]()
         for type in in_types:
-            in_types_mlir.append(type[].to_mlir(ctx))
+            in_types_mlir.append(type.to_mlir(ctx))
         var out_types_mlir = List[_mlir.Type]()
         for type in out_types:
-            out_types_mlir.append(type[].to_mlir(ctx))
+            out_types_mlir.append(type.to_mlir(ctx))
 
         var op = _c.graph_new(
             module,
@@ -264,7 +266,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         self._graph = ArcPointer(_OwnedGraph(ctx, op, in_types))
 
-    fn __init__(out self, path: Path) raises:
+    def __init__(out self, path: Path) raises:
         """Constructs a new `Graph` from a MLIR file.
 
         Experimental. Recreates a graph from an MLIR file.
@@ -284,13 +286,13 @@ struct Graph(Copyable, Movable, Stringable, Writable):
             var first_block = first_op.region(0).first_block()
             for i in range(first_block.num_arguments()):
                 var arg_type = Type.from_mlir(first_block.argument(i).type())
-                in_list.append(arg_type)
-            self._graph = _OwnedGraph(ctx, first_op, in_list)
+                in_list.append(arg_type.copy())
+            self._graph = ArcPointer(_OwnedGraph(ctx, first_op, in_list))
 
-    fn debug_str(self, pretty_print: Bool = False) -> String:
+    def debug_str(self, pretty_print: Bool = False) -> String:
         return self._module().debug_str(pretty_print)
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """Returns a `String` representation of this `Graph`.
 
         The representation uses a MLIR textual format. The format is subject to
@@ -299,13 +301,13 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Returns:
             A human-readable string representation of the graph.
         """
-        return String.write(self)
+        return String(self)
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         writer.write(self._module())
 
     @always_inline
-    fn verify(self) raises:
+    def verify(self) raises:
         """Verifies the `Graph` and its contents.
 
         Examples of cases when a `Graph` may not be valid (the list is not
@@ -321,9 +323,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         with self._context().diagnostic_error():
             if not self._graph[].op.verify():
-                raise error(self, "graph did not verify")
+                raise error(self.copy(), "graph did not verify")
 
-    fn layer(mut self, name: String) -> _GraphLayerContext:
+    def layer(mut self, name: String) -> _GraphLayerContext:
         """Creates a context manager for a graph layer.
 
         Graph layers don't have a functional meaning for graph execution.
@@ -339,7 +341,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         return _GraphLayerContext(self._graph, name)
 
-    fn current_layer(self) -> String:
+    def current_layer(self) -> String:
         """Returns the full path of the current layer.
 
         This is a `.`-separated string of each nested layer context created
@@ -354,10 +356,10 @@ struct Graph(Copyable, Movable, Stringable, Writable):
     # Basic accessors
     # ===------------------------------------------------------------------=== #
 
-    fn _body(self) raises -> _mlir.Block:
+    def _body(self) raises -> _mlir.Block:
         return self._graph[].op.region(0).first_block()
 
-    fn _module(self) -> _mlir.Module:
+    def _module(self) -> _mlir.Module:
         """Returns the `Graph`'s parent `Module`s.
 
         Returns:
@@ -365,22 +367,22 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         return self._graph[].module()
 
-    fn _context(self) raises -> _mlir.Context:
+    def _context(self) raises -> _mlir.Context:
         """Returns the `Graph`'s MLIR context."""
         return self._module().context()
 
-    fn _name(self) raises -> String:
+    def _name(self) raises -> String:
         """Returns the `Graph`'s name."""
         # Can use String() here because 'name' is a string attribute.
         return String(self._graph[].op.get_inherent_attr("name"))
 
-    def _new_parameters(self, dims: List[Dim]) -> Optional[_mlir.Attribute]:
+    def _new_parameters(self, dims: List[Dim]) raises -> Optional[_mlir.Attribute]:
         """Create an `outputParamDecls` for all newly introduced parameters."""
         ctx = self._context()
         new_params = List[_mlir.Attribute]()
         for dim in dims:
-            if dim[].is_symbolic():
-                name = String(dim[])
+            if dim.is_symbolic():
+                name = String(dim)
                 if name not in self._graph[].parameters:
                     self._graph[].parameters.add(name)
                     new_params.append(_c.attr_new_dim_param_decl(ctx, name))
@@ -390,7 +392,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         return None
 
-    fn __getitem__(self, n: Int) raises -> Symbol:
+    def __getitem__(self, n: Int) raises -> Symbol:
         """Returns the n'th argument of this `Graph`.
 
         By argument, we mean the graph input. For example, `graph[0]` gets the
@@ -414,7 +416,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         var num_args = self._body().num_arguments()
         if (n >= num_args) or (n < 0):
             raise error(
-                self,
+                self.copy(),
                 "index out of bounds: ",
                 n,
                 ", graph has ",
@@ -427,7 +429,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
     # nvop - the most generic op builder
     # ===------------------------------------------------------------------=== #
 
-    fn nvop(
+    def nvop(
         self,
         name: String,
         inputs: List[Symbol] = List[Symbol](),
@@ -466,7 +468,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         var out_types_mlir = List[_mlir.Type]()
         for type in out_types:
-            out_types_mlir.append(type[].to_mlir(ctx))
+            out_types_mlir.append(type.to_mlir(ctx))
 
         var op = _mlir.Operation(
             name=name,
@@ -490,7 +492,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         var all_dims = List[Dim]()
         for res in results:
-            all_dims += res[].type().dims()
+            all_dims += res.type().dims()
 
         var out_param_attr = self._new_parameters(all_dims)
         if out_param_attr:
@@ -499,15 +501,15 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         # Now perform verification of the new operation
         with self._context().diagnostic_error():
             if not op.verify():
-                raise error(self, "operation did not verify")
+                raise error(self.copy(), "operation did not verify")
 
-        return results
+        return results.copy()
 
     # ===------------------------------------------------------------------=== #
     # op - shorthands for single-result ops
     # ===------------------------------------------------------------------=== #
 
-    fn op(
+    def op(
         self,
         name: String,
         out_type: Type,
@@ -526,9 +528,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Returns:
             The symbolic output of the newly-added node.
         """
-        return self.nvop(name, out_types=List(out_type), attrs=attrs)[0]
+        return self.nvop(name, out_types=[out_type.copy()], attrs=attrs)[0]
 
-    fn op(
+    def op(
         self,
         name: String,
         input: Symbol,
@@ -549,9 +551,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Returns:
             The symbolic output of the newly-added node.
         """
-        return self.nvop(name, List(input), List(out_type), attrs)[0]
+        return self.nvop(name, [input], [out_type.copy()], attrs)[0]
 
-    fn op(
+    def op(
         self,
         name: String,
         inputs: List[Symbol],
@@ -572,9 +574,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Returns:
             The symbolic output of the newly-added node.
         """
-        return self.nvop(name, inputs, List(out_type), attrs)[0]
+        return self.nvop(name, inputs, [out_type.copy()], attrs)[0]
 
-    fn op(
+    def op(
         self,
         name: String,
         inputs: List[Symbol],
@@ -601,9 +603,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
     # Factories for various nullary ops
     # ===------------------------------------------------------------------=== #
 
-    fn constant[
+    def constant[
         dtype: DType
-    ](self, owned value: Tensor[dtype]) raises -> Symbol:
+    ](self, var value: Tensor[dtype]) raises -> Symbol:
         """Adds a node representing a `mo.constant` operation.
 
         The value of this constant will have the type `TensorType` with the same
@@ -621,15 +623,15 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         return self.op(
             "mo.constant",
             TensorType(value.spec()),
-            List(_tensor_attr(self._context(), "value", value)),
+            [_tensor_attr(self._context(), "value", value.copy())],
         )
 
     def quantize[
         encoding: QuantizationEncoding
-    ](self, owned value: Tensor[DType.float32]) -> Symbol:
+    ](self, var value: Tensor[DType.float32]) -> Symbol:
         """Quantizes a tensor using a specific quantization encoding.
 
-        This takes the full-precision `value` as owned data and frees it.
+        This takes the full-precision `value` as var data and frees it.
         The resulting quantized constant is allocated and owns its data.
 
         To quantize your model weights, follow these steps:
@@ -656,7 +658,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         return self.constant(encoding.quantize(value^))
 
-    fn vector[dtype: DType](self, values: List[Scalar[dtype]]) raises -> Symbol:
+    def vector[dtype: DType](self, values: List[Scalar[dtype]]) raises -> Symbol:
         """Adds a node representing a `mo.constant` operation.
 
         The value of this constant will have the type `TensorType` with 1-D shape,
@@ -674,10 +676,10 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         return self.op(
             "mo.constant",
             TensorType(dtype, len(values)),
-            List(_vector_attr[dtype](self._context(), "value", values)),
+            [_vector_attr[dtype](self._context(), "value", values)],
         )
 
-    fn scalar[
+    def scalar[
         dtype: DType
     ](self, value: Scalar[dtype], rank: Int = 0) raises -> Symbol:
         """Adds a node representing a `mo.constant` operation.
@@ -696,12 +698,12 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Returns:
             The symbolic output of this node.
         """
-        var shape = List[Int, hint_trivial_type=True](capacity=rank)
+        var shape = List[Int](capacity=rank)
         for _ in range(rank):
             shape.append(1)
-        return self.constant[dtype](Tensor(shape, value))
+        return self.constant[dtype](Tensor[dtype](shape, value))
 
-    fn scalar(self, value: Int, dtype: DType) raises -> Symbol:
+    def scalar(self, value: Int, dtype: DType) raises -> Symbol:
         """Adds a node representing a `mo.constant` operation.
 
         The value of this constant will have the type `TensorType` of the same
@@ -717,42 +719,42 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Raises:
             If `value` cannot be instantiated as a tensor of element `dtype`.
         """
-        if dtype is DType.uint8:
+        if dtype == DType.uint8:
             return self.scalar(UInt8(value))
-        if dtype is DType.uint16:
+        if dtype == DType.uint16:
             return self.scalar(UInt16(value))
-        if dtype is DType.uint32:
+        if dtype == DType.uint32:
             return self.scalar(UInt32(value))
-        if dtype is DType.uint64:
+        if dtype == DType.uint64:
             return self.scalar(UInt64(value))
 
-        if dtype is DType.int8:
+        if dtype == DType.int8:
             return self.scalar(Int8(value))
-        if dtype is DType.int16:
+        if dtype == DType.int16:
             return self.scalar(Int16(value))
-        if dtype is DType.int32:
+        if dtype == DType.int32:
             return self.scalar(Int32(value))
-        if dtype is DType.int64:
+        if dtype == DType.int64:
             return self.scalar(Int64(value))
 
         # TODO(KERN-228): support BF16 on neon systems.
         @parameter
-        if not has_neon():
-            if dtype is DType.bfloat16:
+        if not CompilationTarget.has_neon():
+            if dtype == DType.bfloat16:
                 return self.scalar(BFloat16(value))
 
         # TODO(#33932): Enable once KGENCompilerRT provides __truncdfhf2.
-        # if dtype is DType.float16:
+        # if dtype == DType.float16:
         #     return self.scalar(Float16(value))
 
-        if dtype is DType.float32:
+        if dtype == DType.float32:
             return self.scalar(Float32(value))
-        if dtype is DType.float64:
+        if dtype == DType.float64:
             return self.scalar(Float64(value))
 
-        raise error(self, "unimplemented Int conversion dtype: ", dtype)
+        raise error(self.copy(), "unimplemented Int conversion dtype: ", dtype)
 
-    fn scalar(self, value: Float64, dtype: DType) raises -> Symbol:
+    def scalar(self, value: Float64, dtype: DType) raises -> Symbol:
         """Adds a node representing a `mo.constant` operation.
 
         The value of this constant will have the type `TensorType` of the same
@@ -771,24 +773,24 @@ struct Graph(Copyable, Movable, Stringable, Writable):
 
         # TODO(KERN-228): support BF16 on neon systems.
         @parameter
-        if not has_neon():
-            if dtype is DType.bfloat16:
+        if not CompilationTarget.has_neon():
+            if dtype == DType.bfloat16:
                 return self.scalar(value.cast[DType.bfloat16]())
 
         # TODO(#33932): Enable once KGENCompilerRT provides __truncdfhf2.
-        # if dtype is DType.float16:
+        # if dtype == DType.float16:
         #     return self.scalar(Float16(value))
 
-        if dtype is DType.float32:
+        if dtype == DType.float32:
             return self.scalar(value.cast[DType.float32]())
-        if dtype is DType.float64:
+        if dtype == DType.float64:
             return self.scalar(value)
 
         raise error(
-            self, "unimplemented FloatLiteral conversion dtype: ", dtype
+            self.copy(), "unimplemented FloatLiteral conversion dtype: ", dtype
         )
 
-    fn range[
+    def range[
         dtype: DType
     ](
         self, start: Scalar[dtype], stop: Scalar[dtype], step: Scalar[dtype]
@@ -822,7 +824,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
             TensorType(dtype, len(range(Int(start), Int(stop), Int(step)))),
         )
 
-    fn range(
+    def range(
         self, start: Symbol, stop: Symbol, step: Symbol, out_dim: Dim
     ) raises -> Symbol:
         """Creates a sequence of numbers. The sequence goes from `start` with
@@ -854,7 +856,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         )
 
     @always_inline
-    fn full[
+    def full[
         dtype: DType
     ](self, value: Scalar[dtype], *dims: Dim) raises -> Symbol:
         """Creates a constant-valued symbolic tensor of a specified shape.
@@ -872,12 +874,12 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         """
         var shape = List[Dim]()
         for d in dims:
-            shape.append(d[])
+            shape.append(d)
 
         return self.full(value, shape, __call_location())
 
     @always_inline
-    fn full[
+    def full[
         dtype: DType
     ](
         self,
@@ -903,7 +905,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
             dims, location or __call_location()
         )
 
-    fn output(mut self, output: Symbol) raises:
+    def output(mut self, output: Symbol) raises:
         """Adds an output for the graph.
 
         This is a special node that all graphs must have in order to deliver
@@ -913,9 +915,9 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         Args:
             output: The return value, usually the result from an op.
         """
-        return self.output(List(output))
+        return self.output([output])
 
-    fn output(mut self, outputs: List[Symbol]) raises:
+    def output(mut self, outputs: List[Symbol]) raises:
         """Adds an output for the graph.
 
         This is a special node that all graphs must have in order to deliver
@@ -928,7 +930,7 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         var ctx = self._context()
         var results = List[_mlir.Type]()
         for output in outputs:
-            results.append(output[].type().to_mlir(ctx))
+            results.append(output.type().to_mlir(ctx))
         var op = self._graph[].op
 
         var function_type = FunctionType.from_mlir(
@@ -941,19 +943,18 @@ struct Graph(Copyable, Movable, Stringable, Writable):
         op.set_inherent_attr(
             "functionType", TypeAttr(function_type.to_mlir()).to_mlir()
         )
-        op.set_inherent_attr("signature", TypeAttr(signature).to_mlir())
+        op.set_inherent_attr("signature", TypeAttr(signature.to_mlir()).to_mlir())
 
         # Set the result_names metadata on the staged op, which is needed by
         # the engine for execution.
         var result_names = String()
-        var buffer = _WriteBufferStack(result_names)
-        buffer.write("[")
+        result_names.write("[")
         for i in range(len(outputs)):
-            buffer.write('"output', i, '"')
+            result_names.write('"output', i, '"')
             if i < (len(outputs) - 1):
-                buffer.write(", ")
-        buffer.write("]")
-        buffer.flush()
+                result_names.write(", ")
+        result_names.write("]")
+        pass
 
         op.set_discardable_attr(
             "result_names", _mlir.Attribute.parse(ctx, result_names)

@@ -17,17 +17,8 @@
 # The docs are generated from the original implementations.
 
 from tensor import (
-    ManagedTensorSlice,
-    StaticTensorSpec,
-    InputTensor,
-    OutputTensor,
-    IOSpec,
-    Input,
-    Output,
-    MutableInput,
     RuntimeTensorSpec,
     Tensor,
     TensorShape,
     TensorSpec,
-    foreach,
 )

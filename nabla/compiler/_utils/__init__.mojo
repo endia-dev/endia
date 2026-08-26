@@ -11,23 +11,23 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from collections.string import StaticString, StringSlice
-from os import abort
-from pathlib import Path
-from sys.ffi import DLHandle, c_char, external_call
+from std.collections.string import StaticString, StringSlice
+from std.os import abort
+from std.pathlib import Path
+from std.ffi import c_char, external_call
+from nabla.compiler._dlhandle import DLHandle
 
-from memory.unsafe_pointer import *
+from std.memory.unsafe_pointer import *
+from std.memory import alloc
 
 
-@value
-@register_passable("trivial")
-struct CString(Stringable):
+struct CString(TrivialRegisterPassable, ImplicitlyCopyable, Writable):
     """Represents `const char*` in C. Useful for binding with C APIs."""
 
-    var ptr: UnsafePointer[c_char]
+    var ptr: UnsafePointer[c_char, MutUntrackedOrigin]
 
     @implicit
-    fn __init__(out self, ptr: UnsafePointer[c_char]):
+    def __init__(out self, ptr: UnsafePointer[c_char, MutUntrackedOrigin]):
         """
         Construct a `CString` from a C string data pointer.
 
@@ -36,22 +36,25 @@ struct CString(Stringable):
         """
         self.ptr = ptr.bitcast[c_char]()
 
-    fn get_as_string_ref(self) -> StaticString:
+    def get_as_string_ref(self) -> StaticString:
         """
         Get the `CString` as `StringRef`. Origin is tied to C API.
         For owning version use `__str__()`.
         """
         return StaticString(unsafe_from_utf8_ptr=self.ptr)
 
-    fn __str__(self) -> String:
+    def __str__(self) -> String:
         """
         Get `CString` as a owning `String`.
         """
         return String(unsafe_from_utf8_ptr=self.ptr)
 
+    def write_to[W: Writer](self, mut writer: W):
+        writer.write(self.__str__())
+
 
 @always_inline("nodebug")
-fn exchange[T: AnyTrivialRegType](mut old_var: T, owned new_value: T) -> T:
+def exchange[T: TrivialRegisterPassable](mut old_var: T, var new_value: T) -> T:
     """
     Assign `new_value` to `old_var` and returns the value previously
     contained in `old_var`.
@@ -59,6 +62,24 @@ fn exchange[T: AnyTrivialRegType](mut old_var: T, owned new_value: T) -> T:
     var old = old_var
     old_var = new_value
     return old
+
+
+
+
+@always_inline("nodebug")
+def mut_ptr[T: AnyType](p: UnsafePointer[T, ImmUntrackedOrigin]) -> UnsafePointer[T, MutUntrackedOrigin]:
+    """Reinterpret an immutable untracked pointer as mutable (FFI plumbing)."""
+    var addr = Int(p)
+    return UnsafePointer(to=addr).bitcast[UnsafePointer[T, MutUntrackedOrigin]]()[]
+
+
+@always_inline("nodebug")
+def null_ptr[T: AnyType = NoneType]() -> UnsafePointer[T, MutUntrackedOrigin]:
+    """A NULL pointer value. Mojo 1.0's `UnsafePointer` has no null
+    constructor (non-null by design), but the vendored MAX FFI wrappers use
+    NULL as a moved-from/absent sentinel that the C side also produces."""
+    var zero: Int = 0
+    return UnsafePointer(to=zero).bitcast[UnsafePointer[T, MutUntrackedOrigin]]()[]
 
 
 # ======================================================================#
@@ -69,52 +90,50 @@ fn exchange[T: AnyTrivialRegType](mut old_var: T, owned new_value: T) -> T:
 
 
 @always_inline("nodebug")
-fn call_dylib_func[
-    ReturnType: AnyTrivialRegType = NoneType._mlir_type,
+def call_dylib_func[
+    ReturnType: RegisterPassable = NoneType,
     *Args: AnyType,
 ](lib: DLHandle, name: StringSlice, *args: *Args) -> ReturnType:
-    var args_pack = args.get_loaded_kgen_pack()
+    var func_ptr = lib.get_function[
+        def (*a: *Args) thin abi("C") -> ReturnType
+    ](String(name))
 
-    var func_ptr = lib.get_function[fn (__type_of(args_pack)) -> ReturnType](
-        String(name)
-    )
-
-    return func_ptr(args_pack)
+    return func_ptr(*args)
 
 
-struct OwningVector[T: Movable](Sized):
-    var ptr: UnsafePointer[T]
+struct OwningVector[T: Movable & Deinitable](Sized):
+    var ptr: UnsafePointer[Self.T, MutUntrackedOrigin]
     var size: Int
 
-    alias initial_capacity = 5
+    comptime initial_capacity = 5
     var capacity: Int
 
-    fn __init__(out self):
-        var ptr = UnsafePointer[T].alloc(Self.initial_capacity)
+    def __init__(out self):
+        var ptr = alloc[Self.T](Self.initial_capacity)
         self.ptr = ptr
         self.size = 0
         self.capacity = Self.initial_capacity
 
-    fn __moveinit__(out self, owned existing: Self):
+    def __init__(out self, *, deinit existing: Self):
         self.ptr = existing.ptr
         self.size = existing.size
         self.capacity = existing.capacity
 
-    fn emplace_back(mut self, owned value: T):
+    def emplace_back(mut self, var value: Self.T):
         if self.size < self.capacity:
             (self.ptr + self.size).init_pointee_move(value^)
             self.size += 1
             return
 
         self.capacity = self.capacity * 2
-        var new_ptr = UnsafePointer[T].alloc(self.capacity)
+        var new_ptr = alloc[Self.T](self.capacity)
         for i in range(self.size):
-            (self.ptr + i).move_pointee_into(dst=new_ptr + i)
+            (new_ptr + i).init_pointee_move((self.ptr + i).take_pointee())
         self.ptr.free()
         self.ptr = new_ptr
         self.emplace_back(value^)
 
-    fn get(self, idx: Int) raises -> UnsafePointer[T]:
+    def get(self, idx: Int) raises -> UnsafePointer[Self.T, MutUntrackedOrigin]:
         if idx >= self.size:
             raise Error(
                 "requested index(",
@@ -125,24 +144,24 @@ struct OwningVector[T: Movable](Sized):
             )
         return self.ptr + idx
 
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return self.size
 
-    fn __del__(owned self):
+    def __deinit__(deinit self):
         for i in range(self.size):
             (self.ptr + i).destroy_pointee()
         self.ptr.free()
 
 
-fn get_lib_path_from_cfg(
+def get_lib_path_from_cfg(
     name: StringSlice, err_name: StaticString
 ) raises -> String:
     # TODO: Move KGEN_CompilerRT_getMAXConfigValue to a helper somewhere.
     var lib_path_str_ptr = external_call[
-        "KGEN_CompilerRT_getMAXConfigValue", UnsafePointer[UInt8]
+        "KGEN_CompilerRT_getMAXConfigValue", UnsafePointer[UInt8, MutUntrackedOrigin]
     ](name.unsafe_ptr(), name.byte_length())
 
-    if not lib_path_str_ptr:
+    if Int(lib_path_str_ptr) == 0:
         raise Error(
             "cannot get the location of ", name, " library from modular.cfg"
         )
